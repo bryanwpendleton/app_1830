@@ -85,10 +85,12 @@ fn spawn_hex_tiles(
     // Parse tile names from assets/Map directory
     // For now, spawn a few example tiles based on your asset names
     let tiles = vec![
-        ("A19", Hex::new(0, 19)),
-        ("C19", Hex::new(2, 19)),
-        ("E19", Hex::new(4, 19)),
-        ("blank", Hex::new(0, 0)),
+        ("A19", Hex::new( 0, 19)),
+        ("C19", Hex::new( 2, 19)),
+        ("E5",  Hex::new( 4,  5)),
+        ("J14", Hex::new(10, 14)),
+        ("D10", Hex::new( 3, 10)),
+        ("K15", Hex::new(11, 15)),
     ];
 
     for (tile_name, coord) in tiles {
