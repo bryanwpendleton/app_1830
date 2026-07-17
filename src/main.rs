@@ -23,6 +23,7 @@ impl HexSettings {
         let size = self.hex_size;
         let x = size * (3.0 / 2.0 * hex.x as f32);
         let y = size * (3.0_f32.sqrt() / 2.0 * hex.x as f32 + 3.0_f32.sqrt() * hex.y as f32);
+info!("WorldPos of {:?} is {},{}", hex,x,y);
         Vec2::new(x, y)
     }
 
@@ -32,6 +33,7 @@ impl HexSettings {
         let q = (2.0 / 3.0 * pos.x) / size;
         let r = (-1.0 / 3.0 * pos.x + 3.0_f32.sqrt() / 3.0 * pos.y) / size;
 
+info!("location of worldPos {},{} is q,r {},{}", pos.x,pos.y,q,r);
         // Round to nearest hex using cube coordinates
         let x = q;
         let z = r;
@@ -52,7 +54,7 @@ impl HexSettings {
         } else {
             rz = -rx - ry;
         }
-
+info!("hex rx,ry {},{} will be returned", rx, ry);
         let _ = ry; // Use ry to silence warning
 
         Hex::new(rx as i32, rz as i32)
@@ -128,6 +130,7 @@ fn handle_tile_clicks(
             // Convert world position to hex coordinate
             let hex_coord = settings.world_pos_to_hex(world_pos);
 
+info!("Is there a tile at {:?}", hex_coord);
             // Check if there's a tile at this coordinate
             for (tile, _transform) in tile_query.iter() {
                 if tile.coord == hex_coord {
