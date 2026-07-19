@@ -90,45 +90,99 @@ fn spawn_hex_tiles(
         ("A17", Hex::new( 5, -5)),
         ("A19", Hex::new( 6, -5)),
 
+        ("blank_1large", Hex::new( 1, -4)), // B10
+        ("blank", Hex::new( 2, -4)), // B12
+        ("blank", Hex::new( 3, -4)), // B14
+        ("blank_1large", Hex::new( 4, -4)), // B16
+        ("B18", Hex::new( 5, -4)),
         ("B20", Hex::new( 6, -4)),
+        ("blank", Hex::new( 7, -4)), // B22
         ("B24", Hex::new( 8, -4)),
 
-        ("blank", Hex::new(-1, -3)),
-        ("blank", Hex::new( 0, -3)),
-        ("blank", Hex::new( 1, -3)),
-        ("blank", Hex::new( 2, -3)),
+        ("blank", Hex::new(-1, -3)), // C7
+        ("blank", Hex::new( 0, -3)), // C9
+        ("blank", Hex::new( 1, -3)), // C11
+        ("blank", Hex::new( 2, -3)), // C13
         ("C15", Hex::new( 3, -3)),
+        ("blank_mountain", Hex::new( 4, -3)), // C17
         ("C19", Hex::new( 5, -3)),
+        ("blank_mountain", Hex::new( 6, -3)), // C21
+        ("blank", Hex::new( 7, -3)), // C23
 
         ( "D2", Hex::new(-4, -2)),
+        ("blank_1small", Hex::new(-3, -2)), // D4
+        ( "D6", Hex::new(-2, -2)),
+        ("blank", Hex::new(-1, -2)), // D8
         ("D10", Hex::new( 0, -2)),
+        ("blank", Hex::new( 1, -2)), // D12
         ("D14", Hex::new( 2, -2)),
+        ("blank", Hex::new( 3, -2)), // D16
         ("D18", Hex::new( 4, -2)),
-        ("D24", Hex::new( 6, -2)),
+        ("blank", Hex::new( 5, -2)), // D20
+        ("blank_mountain", Hex::new( 6, -2)), // D22
+        ("D24", Hex::new( 7, -2)),
 
+        ("blank", Hex::new(-4, -1)), // E3
         ("E5",  Hex::new(-3, -1)),
+        ("blank_1small", Hex::new(-2, -1)), // E7
         ("E9",  Hex::new(-1, -1)),
         ("E11",  Hex::new( 0, -1)),
+        ("blank", Hex::new( 1, -1)), // E13
+        ("blank", Hex::new( 2, -1)), // E15
+        ("blank_mountain", Hex::new( 3, -1)), // E17
         ("E19",  Hex::new( 4, -1)),
+        ("blank_mountain", Hex::new( 5, -1)), // E21
+        ("E23",  Hex::new( 6, -1)),
 
         ( "F2",  Hex::new(-5,  0)),
         ( "F4",  Hex::new(-4,  0)),
         ( "F6",  Hex::new(-3,  0)),
+        ("blank", Hex::new(-2,  0)), // F8
+        ("blank_1small", Hex::new(-1,  0)), // F10
+        ("blank", Hex::new( 0,  0)), // F12 -- CENTER OF THE SCREEN
+        ("blank", Hex::new( 1,  0)), // F14
         ("F16",  Hex::new( 2,  0)),
+        ("blank", Hex::new( 3,  0)), // F18
+        ("blank_2small", Hex::new( 4,  0)), // F20
+        ("F22",  Hex::new( 5,  0)),
         ("F24",  Hex::new( 6,  0)),
 
+        ("blank", Hex::new(-5,  1)), // G3
+        ("blank", Hex::new(-4,  1)), // G5
+        ("blank_2small", Hex::new(-3,  1)), // G7
+        ("blank", Hex::new(-2,  1)), // G9
+        ("blank", Hex::new(-1,  1)), // G11
+        ("blank_mountain", Hex::new( 0,  1)), // G13
         ("G15", Hex::new( 1,  1)),
+        ("blank_2small", Hex::new( 2,  1)), // G17
         ("G19", Hex::new( 3,  1)),
 
-        // ("H10", Hex::new( 0,  2)),
+        ("blank", Hex::new(-6,  2)), // H2
+        ("blank_1large", Hex::new(-5,  2)), // H4
+        ("blank", Hex::new(-4,  2)), // H6
+        ("blank", Hex::new(-3,  2)), // H8
+        ("blank_1large", Hex::new(-2,  2)), // H10
         ("H12", Hex::new(-1,  2)),
+        ("blank", Hex::new( 0,  2)), // H14
+        ("blank_1large", Hex::new( 1,  2)), // H10
         ("H18", Hex::new( 2,  2)),
 
+        ("blank", Hex::new(-6,  3)), // I3
+        ("blank", Hex::new(-5,  3)), // I5
+        ("blank", Hex::new(-4,  3)), // I7
+        ("blank", Hex::new(-3,  3)), // I9
+        ("blank_mountain", Hex::new(-2,  3)), // I11
+        ("blank", Hex::new(-1,  3)), // I13
         ("I15", Hex::new( 0,  3)),
         ("I17", Hex::new( 1,  3)),
         ("I19", Hex::new( 2,  3)),
 
         ( "J2", Hex::new(-7,  4)),
+        ("blank", Hex::new(-6,  4)), // J4
+        ("blank", Hex::new(-5,  4)), // J6
+        ("blank", Hex::new(-4,  4)), // J8
+        ("blank_mountain", Hex::new(-3,  4)), // J10
+        ("blank_mountain", Hex::new(-2,  4)), // J12
         ("J14", Hex::new(-1,  4)),
 
         ("K13", Hex::new(-2,  5)),
