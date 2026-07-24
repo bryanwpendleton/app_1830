@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use hexx::Hex;
 use hexx::HexLayout;
 
+mod gamemodel;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
