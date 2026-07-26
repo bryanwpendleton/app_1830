@@ -2,6 +2,55 @@ use bevy::prelude::*;
 use hexx::Hex;
 use hexx::HexLayout;
 
+/*
+    The routemap supports the Operating Round(s) of 1830.
+
+    Specifically, the routemap is used by the railroad president
+    to perform the following aspects of the railroad's operating
+    turn:
+
+    - Construct track (either new or upgrade track)
+    - Place a station
+    - Run trains, specifically compute the best route(s) for
+      this railroad's train(s), and announce the resulting revenue.
+
+    The routemap itself is a primary resource of the game, and
+    evolves during these operating rounds. Since comprehending
+    the routemap is crucial during other phases of play, the
+    routemap is always visible on the screen.
+ */
+
+#[derive(Component)]
+pub struct MapTile {
+    coord: Hex,
+    tile_name: String,
+}
+
+/*
+ * Components related to TrackTile:
+ * - tile_number
+ * - TrackColor
+ * - TrackInventoryQuantity
+ * - TrackRotation (Also referred to as "tile facings")
+ */
+
+#[derive(Component)]
+struct TrackTile {
+    tile_number: u32,
+}
+
+#[derive(Component)]
+enum TrackColor {
+    Yellow,
+    Green,
+    Orange,
+}
+
+#[derive(Component)]
+struct TrackRotation {
+    rotation: u32,      // facing 3 means rotated twice.
+}
+
 #[derive(Resource)]
 pub struct HexSettings {
     pub layout: HexLayout,
@@ -22,12 +71,6 @@ impl HexSettings {
 info!("location of worldPos {},{} is {:?}", pos.x,pos.y,hex);
         hex
     }
-}
-
-#[derive(Component)]
-pub struct HexTile {
-    pub coord: Hex,
-    pub tile_name: String,
 }
 
 pub fn setup_routemap(
@@ -169,7 +212,7 @@ pub fn spawn_routemap(
         commands.spawn((
             Sprite::from_image(asset_server.load(format!("Map/{}.png", tile_name))),
             Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
-            HexTile {
+            MapTile {
                 coord,
                 tile_name: tile_name.to_string(),
             },
@@ -181,7 +224,7 @@ pub fn handle_tile_clicks(
     buttons: Res<ButtonInput<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<super::MainCamera>>,
     windows: Query<&Window>,
-    tile_query: Query<(&HexTile, &Transform)>,
+    tile_query: Query<(&MapTile, &Transform)>,
     settings: Res<HexSettings>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
@@ -213,3 +256,7 @@ info!("Is there a tile at {:?}", hex_coord);
         }
     }
 }
+
+/*
+    Here are the 1830 TrackTile entities.
+ */
