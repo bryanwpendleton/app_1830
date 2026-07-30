@@ -1,10 +1,10 @@
 use bevy::prelude::*;
-use hexx::Hex;
-use hexx::HexLayout;
+use bevy_egui::EguiPlugin;
 
 mod gamemodel;
 mod routemap;
 
+use gamemodel::Game1830Plugin;
 use routemap::{setup_routemap, spawn_routemap, handle_tile_clicks};
 
 fn main() {
@@ -18,6 +18,8 @@ fn main() {
             }),
             ..default()
         }))
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(Game1830Plugin)
         .add_systems(Startup, (setup_camera, setup_routemap, spawn_routemap).chain())
         .add_systems(Update, handle_tile_clicks)
         .run();

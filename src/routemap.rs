@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_egui::EguiContexts;
 use hexx::Hex;
 use hexx::HexLayout;
 
@@ -221,12 +222,20 @@ pub fn spawn_routemap(
 }
 
 pub fn handle_tile_clicks(
+    mut contexts: EguiContexts,
     buttons: Res<ButtonInput<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<super::MainCamera>>,
     windows: Query<&Window>,
     tile_query: Query<(&MapTile, &Transform)>,
     settings: Res<HexSettings>,
 ) {
+    // Don't treat clicks on the egui panel as map clicks.
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.egui_wants_pointer_input() {
+            return;
+        }
+    }
+
     if buttons.just_pressed(MouseButton::Left) {
         let Ok((camera, camera_transform)) = camera_query.single() else {
             return;

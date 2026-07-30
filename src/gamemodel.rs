@@ -2,6 +2,7 @@
 // This module contains all the components, resources, and systems for the 1830 game model
 
 use bevy::prelude::*;
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -83,6 +84,58 @@ pub struct GameState {
     pub bank: u32,
 }
 
+impl GameState {
+    /// Advance the game to the next phase, returning a log message.
+    /// Shared by the `advance_game_phase` system and the UI panel button.
+    pub fn advance_phase(&mut self) -> &'static str {
+        match self.phase {
+            GamePhase::PurchasePrivateCompanies => {
+                self.phase = GamePhase::TwoTrains;
+                "Advanced to TwoTrains phase"
+            }
+            GamePhase::TwoTrains => {
+                self.phase = GamePhase::ThreeTrains;
+                "Advanced to ThreeTrains phase"
+            }
+            GamePhase::ThreeTrains => {
+                self.phase = GamePhase::FourTrains;
+                "Advanced to FourTrains phase"
+            }
+            GamePhase::FourTrains => {
+                self.phase = GamePhase::FiveTrains;
+                "Advanced to FiveTrains phase"
+            }
+            GamePhase::FiveTrains => {
+                self.phase = GamePhase::SixTrains;
+                "Advanced to SixTrains phase"
+            }
+            GamePhase::SixTrains => {
+                self.phase = GamePhase::DieselTrains;
+                "Advanced to DieselTrains phase"
+            }
+            GamePhase::DieselTrains => {
+                self.phase = GamePhase::EndGame;
+                "Advanced to EndGame phase"
+            }
+            GamePhase::EndGame => "Who won?",
+        }
+    }
+
+    /// Human-readable label for the current phase, for display in the UI.
+    pub fn phase_label(&self) -> &'static str {
+        match self.phase {
+            GamePhase::PurchasePrivateCompanies => "Purchase Private Companies",
+            GamePhase::TwoTrains => "2-Trains",
+            GamePhase::ThreeTrains => "3-Trains",
+            GamePhase::FourTrains => "4-Trains",
+            GamePhase::FiveTrains => "5-Trains",
+            GamePhase::SixTrains => "6-Trains",
+            GamePhase::DieselTrains => "Diesel Trains",
+            GamePhase::EndGame => "End Game",
+        }
+    }
+}
+
 // The game progresses through seven phases. The start of each
 // new phase is triggered by the purchase of a new train type:
 // 2-train, 3-train, 4-train, 5-train, 6-train, diesel. Each phase has
@@ -108,40 +161,49 @@ pub enum GamePhase {
 pub fn advance_game_phase(
     mut game_state: ResMut<GameState>,
 ) {
-    // TODO: Implement phase advancement logic
-    match game_state.phase {
-        GamePhase::PurchasePrivateCompanies => {
-            game_state.phase = GamePhase::TwoTrains;
-            info!("Advanced to TwoTrains phase");
-        }
-        GamePhase::TwoTrains => {
-            game_state.phase = GamePhase::ThreeTrains;
-            info!("Advanced to ThreeTrains phase");
-        }
-        GamePhase::ThreeTrains => {
-            game_state.phase = GamePhase::FourTrains;
-            info!("Advanced to FourTrains phase");
-        }
-        GamePhase::FourTrains => {
-            game_state.phase = GamePhase::FiveTrains;
-            info!("Advanced to FiveTrains phase");
-        }
-        GamePhase::FiveTrains => {
-            game_state.phase = GamePhase::SixTrains;
-            info!("Advanced to SixTrains phase");
-        }
-        GamePhase::SixTrains => {
-            game_state.phase = GamePhase::DieselTrains;
-            info!("Advanced to DieselTrains phase");
-        }
-        GamePhase::DieselTrains => {
-            game_state.phase = GamePhase::EndGame;
-            info!("Advanced to EndGame phase");
-        }
-        GamePhase::EndGame => {
-            info!("Who won?");
-        }
-    }
+    let msg = game_state.advance_phase();
+    info!("{}", msg);
+}
+
+/// Renders the game info panel bound to [`GameState`].
+///
+/// Runs in the [`EguiPrimaryContextPass`] schedule and draws a right-hand
+/// side panel as an overlay on top of the hex map, leaving the map rendering
+/// untouched.
+pub fn game_state_panel(
+    mut contexts: EguiContexts,
+    mut game_state: ResMut<GameState>,
+) -> Result {
+    let ctx = contexts.ctx_mut()?.clone();
+
+    // Panels render into a Ui built over the viewport background layer.
+    let mut viewport_ui = egui::Ui::new(
+        ctx.clone(),
+        "game_info_viewport".into(),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::background())
+            .max_rect(ctx.viewport_rect()),
+    );
+
+    egui::Panel::right("game_info_panel")
+        .resizable(false)
+        .default_size(220.0)
+        .show(&mut viewport_ui, |ui| {
+            ui.heading("1830");
+            ui.separator();
+
+            ui.label(format!("Phase: {}", game_state.phase_label()));
+            ui.label(format!("Bank: ${}", game_state.bank));
+
+            ui.separator();
+
+            if ui.button("Advance Phase").clicked() {
+                let msg = game_state.advance_phase();
+                info!("{}", msg);
+            }
+        });
+
+    Ok(())
 }
 
 /// System to initialize game resources
@@ -165,11 +227,14 @@ impl Plugin for Game1830Plugin {
     fn build(&self, app: &mut App) {
         app
             // Setup systems run once at startup
-            //.add_systems(Startup, (setup_game, setup_players).chain())
+            .add_systems(Startup, setup_game)
 
-            // Update systems run every frame
-            // TODO: Add update systems when needed
-            // .add_systems(Update, (advance_game_phase, determine_winner))
-            ;
+            // egui UI systems must run in the EguiPrimaryContextPass schedule
+            // so the primary context is available.
+            .add_systems(EguiPrimaryContextPass, game_state_panel);
+
+        // Update systems run every frame
+        // TODO: Add update systems when needed
+        // .add_systems(Update, (advance_game_phase, determine_winner))
     }
 }
