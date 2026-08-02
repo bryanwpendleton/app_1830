@@ -82,6 +82,7 @@ pub enum Train {
 pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
+    pub tile_string : String,
 }
 
 impl GameState {
@@ -119,6 +120,19 @@ impl GameState {
             }
             GamePhase::EndGame => "Who won?",
         }
+    }
+
+/*
+    pub fn place_tile(&mut self, hex: &str, color:&str, tile:&str, facing:&str) 
+    {
+        info!("You asked to place {} tile {} facing {} on hex {}",
+                color, tile, facing, hex);
+    }
+*/
+
+    pub fn place_tile(&mut self) 
+    {
+        info!("You asked to place a tile : {}", self.tile_string);
     }
 
     /// Human-readable label for the current phase, for display in the UI.
@@ -195,12 +209,115 @@ pub fn game_state_panel(
             ui.label(format!("Phase: {}", game_state.phase_label()));
             ui.label(format!("Bank: ${}", game_state.bank));
 
-            ui.separator();
-
             if ui.button("Advance Phase").clicked() {
                 let msg = game_state.advance_phase();
                 info!("{}", msg);
             }
+
+            ui.separator();
+
+            let response =
+                ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
+            if response.lost_focus()
+            {
+                game_state.place_tile();
+            }
+/*
+            let pickable_map_hexes = vec!["B10", "B12", "B14",
+                "B16", "B18", "B20", "B22", "C7", "C9", "C11",
+                "C13", "C17", "C19", "C21", "C23", "D4", "D6",
+                "D8", "D10", "D12", "D16", "D18", "D10", "D22",
+                "E3", "E5", "E7", "E11", "E13", "E15", "E17",
+                "E19", "E21", "E23", "F4", "F8", "F10", "F12",
+                "F14", "F16", "F18", "F20", "F22", "G3", "G5",
+                "G7", "G9", "G11", "G13", "G15", "G17", "G19",
+                "H2", "H4", "H6", "H8", "H10", "H14", "F16",
+                "H18", "H20", "I3", "I5", "I7", "I9", "I11",
+                "I13", "I15", "I17", "J4", "J6", "J8", "J10",
+                "J12", "J14"];
+            let mut selected_hex = 0;
+
+            bevy_egui::egui::ComboBox::from_label("Map Hex")
+                .selected_text(pickable_map_hexes[selected_hex])
+                .show_ui(ui, |ui| {
+                    for (index, option) in
+                            pickable_map_hexes.iter().enumerate()
+                    {
+                        ui.selectable_value(&mut selected_hex,
+                                            index, *option);
+                    }
+                });
+
+            let pickable_yellow_tiles =
+                vec!["T1", "T2", "T3", "T4", "T5", "T6", "T7",
+                    "T8", "T9", "T55", "T56", "T57", "T58", "T69"];
+            let pickable_green_tiles =
+                vec!["T14", "T15", "T16", "T18", "T19", "T20",
+                    "T23", "T24", "T25", "T26", "T27", "T28",
+                    "T29", "T53", "T54", "T59"];
+            let pickable_orange_tiles =
+                vec!["T39", "T40", "T41", "T42", "T43", "T44",
+                    "T45", "T46", "T47", "T61", "T62", "T63",
+                    "T64", "T65", "T66", "T67", "T68", "T70"];
+            let pickable_tiles : Vec<&str> = 
+                vec![pickable_yellow_tiles.clone(),
+                    pickable_green_tiles.clone(),
+                    pickable_orange_tiles.clone()]
+                .into_iter().flatten().collect();
+
+            let mut selected_tile = 0;
+
+            bevy_egui::egui::ComboBox::from_label("Tile")
+                .selected_text(pickable_tiles[selected_tile])
+                .show_ui(ui, |ui| {
+                    for (index, option) in
+                            pickable_tiles.iter().enumerate()
+                    {
+                        ui.selectable_value(&mut selected_tile,
+                                            index, *option);
+                    }
+                });
+
+            let pickable_facings =
+                vec!["none", "f2", "f3", "f4", "f5", "f6"];
+            let mut selected_facing = 0;
+
+            bevy_egui::egui::ComboBox::from_label("Facing")
+                .selected_text(pickable_facings[selected_facing])
+                .show_ui(ui, |ui| {
+                    for (index, option) in
+                            pickable_facings.iter().enumerate()
+                    {
+                        ui.selectable_value(&mut selected_facing,
+                                            index, *option);
+                    }
+                });
+
+            if ui.button("Place tile").clicked() {
+                let mut color : &str = "unknown";
+                if selected_tile < pickable_yellow_tiles.len()
+                {
+                    color = "yellow";
+                }
+                else if selected_tile <
+                    pickable_green_tiles.len() + pickable_yellow_tiles.len()
+                {
+                    color = "green";
+                }
+                else
+                {
+                    color = "orange";
+                }
+
+                game_state.place_tile(
+                            pickable_map_hexes[selected_hex],
+                            color,
+                            pickable_tiles[selected_tile],
+                            pickable_facings[selected_facing]);
+            }
+*/
+
+            ui.separator();
         });
 
     Ok(())
@@ -211,6 +328,7 @@ pub fn setup_game(mut commands: Commands) {
     commands.insert_resource(GameState {
         phase: GamePhase::PurchasePrivateCompanies,
         bank: 12000,
+        tile_string : String::new(),
     });
 
     info!("Game initialized");
