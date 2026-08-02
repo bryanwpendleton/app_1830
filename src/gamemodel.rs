@@ -4,6 +4,8 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
+use crate::routemap::MapTile;
+
 // ============================================================================
 // COMPONENTS - Data attached to entities
 // ============================================================================
@@ -122,19 +124,6 @@ impl GameState {
         }
     }
 
-/*
-    pub fn place_tile(&mut self, hex: &str, color:&str, tile:&str, facing:&str) 
-    {
-        info!("You asked to place {} tile {} facing {} on hex {}",
-                color, tile, facing, hex);
-    }
-*/
-
-    pub fn place_tile(&mut self) 
-    {
-        info!("You asked to place a tile : {}", self.tile_string);
-    }
-
     /// Human-readable label for the current phase, for display in the UI.
     pub fn phase_label(&self) -> &'static str {
         match self.phase {
@@ -179,6 +168,30 @@ pub fn advance_game_phase(
     info!("{}", msg);
 }
 
+pub fn place_tile(
+    mut game_state: ResMut<GameState>,
+    mut tiles: Query<(&mut Sprite, &MapTile)>,
+    asset_server: Res<AssetServer>,
+) {
+    if game_state.tile_string.is_empty()
+    {
+        return;
+    }
+
+    info!("You asked to place a tile : {}", game_state.tile_string);
+
+    let v: Vec<&str> = game_state.tile_string.split(":").collect();
+
+    for (mut sprite, tile) in &mut tiles {
+        if tile.tile_name == v[0]
+        {
+            sprite.image = asset_server.load(v[1]);
+            info!("Updated the image for {} to {}", v[0], v[1]);
+        }
+    }
+    game_state.tile_string.clear();
+}
+
 /// Renders the game info panel bound to [`GameState`].
 ///
 /// Runs in the [`EguiPrimaryContextPass`] schedule and draws a right-hand
@@ -216,12 +229,7 @@ pub fn game_state_panel(
 
             ui.separator();
 
-            let response =
-                ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
-            if response.lost_focus()
-            {
-                game_state.place_tile();
-            }
+            ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
 /*
             let pickable_map_hexes = vec!["B10", "B12", "B14",
                 "B16", "B18", "B20", "B22", "C7", "C9", "C11",
@@ -235,18 +243,6 @@ pub fn game_state_panel(
                 "H18", "H20", "I3", "I5", "I7", "I9", "I11",
                 "I13", "I15", "I17", "J4", "J6", "J8", "J10",
                 "J12", "J14"];
-            let mut selected_hex = 0;
-
-            bevy_egui::egui::ComboBox::from_label("Map Hex")
-                .selected_text(pickable_map_hexes[selected_hex])
-                .show_ui(ui, |ui| {
-                    for (index, option) in
-                            pickable_map_hexes.iter().enumerate()
-                    {
-                        ui.selectable_value(&mut selected_hex,
-                                            index, *option);
-                    }
-                });
 
             let pickable_yellow_tiles =
                 vec!["T1", "T2", "T3", "T4", "T5", "T6", "T7",
@@ -265,56 +261,10 @@ pub fn game_state_panel(
                     pickable_orange_tiles.clone()]
                 .into_iter().flatten().collect();
 
-            let mut selected_tile = 0;
-
-            bevy_egui::egui::ComboBox::from_label("Tile")
-                .selected_text(pickable_tiles[selected_tile])
-                .show_ui(ui, |ui| {
-                    for (index, option) in
-                            pickable_tiles.iter().enumerate()
-                    {
-                        ui.selectable_value(&mut selected_tile,
-                                            index, *option);
-                    }
-                });
-
             let pickable_facings =
                 vec!["none", "f2", "f3", "f4", "f5", "f6"];
             let mut selected_facing = 0;
 
-            bevy_egui::egui::ComboBox::from_label("Facing")
-                .selected_text(pickable_facings[selected_facing])
-                .show_ui(ui, |ui| {
-                    for (index, option) in
-                            pickable_facings.iter().enumerate()
-                    {
-                        ui.selectable_value(&mut selected_facing,
-                                            index, *option);
-                    }
-                });
-
-            if ui.button("Place tile").clicked() {
-                let mut color : &str = "unknown";
-                if selected_tile < pickable_yellow_tiles.len()
-                {
-                    color = "yellow";
-                }
-                else if selected_tile <
-                    pickable_green_tiles.len() + pickable_yellow_tiles.len()
-                {
-                    color = "green";
-                }
-                else
-                {
-                    color = "orange";
-                }
-
-                game_state.place_tile(
-                            pickable_map_hexes[selected_hex],
-                            color,
-                            pickable_tiles[selected_tile],
-                            pickable_facings[selected_facing]);
-            }
 */
 
             ui.separator();
@@ -349,10 +299,12 @@ impl Plugin for Game1830Plugin {
 
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
-            .add_systems(EguiPrimaryContextPass, game_state_panel);
+            .add_systems(EguiPrimaryContextPass, game_state_panel)
 
         // Update systems run every frame
         // TODO: Add update systems when needed
         // .add_systems(Update, (advance_game_phase, determine_winner))
+
+            .add_systems(Update, place_tile) ;
     }
 }

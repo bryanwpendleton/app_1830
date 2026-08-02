@@ -23,8 +23,8 @@ use hexx::HexLayout;
 
 #[derive(Component)]
 pub struct MapTile {
-    coord: Hex,
-    tile_name: String,
+    pub coord: Hex,
+    pub tile_name: String,
 }
 
 /*
