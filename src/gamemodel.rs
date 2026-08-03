@@ -180,13 +180,21 @@ pub fn place_tile(
 
     info!("You asked to place a tile : {}", game_state.tile_string);
 
-    let v: Vec<&str> = game_state.tile_string.split(":").collect();
+    let v: Vec<String> = game_state
+        .tile_string
+        .split(":")
+        .map(|s| s.to_string())
+        .collect();
 
     for (mut sprite, tile) in &mut tiles {
         if tile.tile_name == v[0]
         {
-            sprite.image = asset_server.load(v[1]);
+            sprite.image = asset_server.load(v[1].clone());
             info!("Updated the image for {} to {}", v[0], v[1]);
+        }
+        else
+        {
+            info!("Hex {} is not the requested {}", tile.tile_name, v[0]);
         }
     }
     game_state.tile_string.clear();
