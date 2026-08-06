@@ -22,8 +22,14 @@ use hexx::HexLayout;
  */
 
 #[derive(Component)]
+pub struct HexName {
+    pub name: String,
+}
+
+#[derive(Component)]
 pub struct MapTile {
     pub coord: Hex,
+    pub hex_name: HexName,
     pub tile_name: String,
 }
 
@@ -55,6 +61,17 @@ struct TrackRotation {
 #[derive(Resource)]
 pub struct HexSettings {
     pub layout: HexLayout,
+}
+
+impl HexName
+{
+    pub fn new(nm: &str) -> Self
+    {
+        Self
+        {
+            name: String::from(nm),
+        }
+    }
 }
 
 impl HexSettings {
@@ -95,119 +112,132 @@ pub fn spawn_routemap(
     asset_server: Res<AssetServer>,
     settings: Res<HexSettings>,
 ) {
+    // This is the map.
+    //
+    // You can think of it as a hexagonal map in various coordinates
+    // You can think of it as a vector of hexes.
+    // You can think of it as rows and columns of hexes
+    //
+    // The map is "splotchy" around the edges, so not every
+    // row and column in [A-K,1-24] exists.
+    //
+    // Here we set up the raw data
     // Parse tile names from assets/Map directory
-    // For now, spawn a few example tiles based on asset names
     // Row(r) (A..K/1..11) is the Y axis. Col(q) (1..24) is the X axis.
     //
     // We're using F12 as the logical center of the screen,
     // everything from there.
 
-    let tiles = vec![
-        ( "A9", Hex::new( 1, -5)),
-        ("A11", Hex::new( 2, -5)),
-        ("A17", Hex::new( 5, -5)),
-        ("A19", Hex::new( 6, -5)),
+    let hexes = vec![
+        (HexName::new("A9"),  Hex::new( 1, -5),  "A9"),
+        (HexName::new("A11"), Hex::new( 2, -5), "A11"),
+        (HexName::new("A17"), Hex::new( 5, -5), "A17"),
+        (HexName::new("A19"), Hex::new( 6, -5), "A19"),
 
-        ("blank_1large", Hex::new( 1, -4)), // B10
-        ("blank", Hex::new( 2, -4)), // B12
-        ("blank", Hex::new( 3, -4)), // B14
-        ("blank_1large", Hex::new( 4, -4)), // B16
-        ("B18", Hex::new( 5, -4)),
-        ("B20", Hex::new( 6, -4)),
-        ("blank", Hex::new( 7, -4)), // B22
-        ("B24", Hex::new( 8, -4)),
+        (HexName::new("B10"), Hex::new( 1, -4), "blank_1large"),
+        (HexName::new("B12"), Hex::new( 2, -4), "blank"),
+        (HexName::new("B14"), Hex::new( 3, -4), "blank"),
+        (HexName::new("B16"), Hex::new( 4, -4), "blank_1large"),
+        (HexName::new("B18"), Hex::new( 5, -4), "B18"),
+        (HexName::new("B20"), Hex::new( 6, -4), "B20"),
+        (HexName::new("B22"), Hex::new( 7, -4), "blank"),
+        (HexName::new("B24"), Hex::new( 8, -4), "B24"),
 
-        ("blank", Hex::new(-1, -3)), // C7
-        ("blank", Hex::new( 0, -3)), // C9
-        ("blank", Hex::new( 1, -3)), // C11
-        ("blank", Hex::new( 2, -3)), // C13
-        ("C15", Hex::new( 3, -3)),
-        ("blank_mountain", Hex::new( 4, -3)), // C17
-        ("C19", Hex::new( 5, -3)),
-        ("blank_mountain", Hex::new( 6, -3)), // C21
-        ("blank", Hex::new( 7, -3)), // C23
+        (HexName::new("C7"),  Hex::new(-1, -3), "blank"),
+        (HexName::new("C9"),  Hex::new( 0, -3), "blank"),
+        (HexName::new("C11"), Hex::new( 1, -3), "blank"),
+        (HexName::new("C13"), Hex::new( 2, -3), "blank"),
+        (HexName::new("C15"), Hex::new( 3, -3), "C15"),
+        (HexName::new("C17"), Hex::new( 4, -3), "blank_mountain"),
+        (HexName::new("C19"), Hex::new( 5, -3), "C19"),
+        (HexName::new("C21"), Hex::new( 6, -3), "blank_mountain"),
+        (HexName::new("C23"), Hex::new( 7, -3), "blank"),
 
-        ( "D2", Hex::new(-4, -2)),
-        ("blank_1small", Hex::new(-3, -2)), // D4
-        ( "D6", Hex::new(-2, -2)),
-        ("blank", Hex::new(-1, -2)), // D8
-        ("D10", Hex::new( 0, -2)),
-        ("blank", Hex::new( 1, -2)), // D12
-        ("D14", Hex::new( 2, -2)),
-        ("blank", Hex::new( 3, -2)), // D16
-        ("D18", Hex::new( 4, -2)),
-        ("blank", Hex::new( 5, -2)), // D20
-        ("blank_mountain", Hex::new( 6, -2)), // D22
-        ("D24", Hex::new( 7, -2)),
+        (HexName::new("D2"),  Hex::new(-4, -2), "D2"),
+        (HexName::new("D4"),  Hex::new(-3, -2), "blank_1small"),
+        (HexName::new("D6"),  Hex::new(-2, -2), "D6"),
+        (HexName::new("D8"),  Hex::new(-1, -2), "blank"),
+        (HexName::new("D10"), Hex::new( 0, -2), "D10"),
+        (HexName::new("D12"), Hex::new( 1, -2), "blank"),
+        (HexName::new("D14"), Hex::new( 2, -2), "D14"),
+        (HexName::new("D16"), Hex::new( 3, -2), "blank"),
+        (HexName::new("D18"), Hex::new( 4, -2), "D18"),
+        (HexName::new("D20"), Hex::new( 5, -2), "blank"),
+        (HexName::new("D22"), Hex::new( 6, -2), "blank_mountain"),
+        (HexName::new("D24"), Hex::new( 7, -2), "D24"),
 
-        ("blank", Hex::new(-4, -1)), // E3
-        ("E5",  Hex::new(-3, -1)),
-        ("blank_1small", Hex::new(-2, -1)), // E7
-        ("E9",  Hex::new(-1, -1)),
-        ("E11",  Hex::new( 0, -1)),
-        ("blank", Hex::new( 1, -1)), // E13
-        ("blank", Hex::new( 2, -1)), // E15
-        ("blank_mountain", Hex::new( 3, -1)), // E17
-        ("E19",  Hex::new( 4, -1)),
-        ("blank_mountain", Hex::new( 5, -1)), // E21
-        ("E23",  Hex::new( 6, -1)),
+        (HexName::new("E3"),  Hex::new(-4, -1), "blank"),
+        (HexName::new("E5"),  Hex::new(-3, -1), "E5"),
+        (HexName::new("E7"),  Hex::new(-2, -1), "blank_1small"),
+        (HexName::new("E9"),  Hex::new(-1, -1), "E9"),
+        (HexName::new("E11"), Hex::new( 0, -1), "E11"),
+        (HexName::new("E13"), Hex::new( 1, -1), "blank"),
+        (HexName::new("E15"), Hex::new( 2, -1), "blank"),
+        (HexName::new("E17"), Hex::new( 3, -1), "blank_mountain"),
+        (HexName::new("E19"), Hex::new( 4, -1), "E19"),
+        (HexName::new("E21"), Hex::new( 5, -1), "blank_mountain"),
+        (HexName::new("E23"), Hex::new( 6, -1), "E23"),
 
-        ( "F2",  Hex::new(-5,  0)),
-        ( "F4",  Hex::new(-4,  0)),
-        ( "F6",  Hex::new(-3,  0)),
-        ("blank", Hex::new(-2,  0)), // F8
-        ("blank_1small", Hex::new(-1,  0)), // F10
-        ("blank", Hex::new( 0,  0)), // F12 -- CENTER OF THE SCREEN
-        ("blank", Hex::new( 1,  0)), // F14
-        ("F16",  Hex::new( 2,  0)),
-        ("blank", Hex::new( 3,  0)), // F18
-        ("blank_2small", Hex::new( 4,  0)), // F20
-        ("F22",  Hex::new( 5,  0)),
-        ("F24",  Hex::new( 6,  0)),
+        (HexName::new("F2"),  Hex::new(-5,  0), "F2"),
+        (HexName::new("F4"),  Hex::new(-4,  0), "F4"),
+        (HexName::new("F6"),  Hex::new(-3,  0), "F6"),
+        (HexName::new("F8"),  Hex::new(-2,  0), "blank"),
+        (HexName::new("F10"), Hex::new(-1,  0), "blank_1small"),
+                // F12 -- CENTER OF THE SCREEN
+        (HexName::new("F12"), Hex::new( 0,  0), "blank"),
+                // F12 -- CENTER OF THE SCREEN
+        (HexName::new("F14"), Hex::new( 1,  0), "blank"),
+        (HexName::new("F16"), Hex::new( 2,  0), "F16"),
+        (HexName::new("F18"), Hex::new( 3,  0), "blank"),
+        (HexName::new("F20"), Hex::new( 4,  0), "blank_2small"),
+        (HexName::new("F22"), Hex::new( 5,  0), "F22"),
+        (HexName::new("F24"), Hex::new( 6,  0), "F24"),
 
-        ("blank", Hex::new(-5,  1)), // G3
-        ("blank", Hex::new(-4,  1)), // G5
-        ("blank_2small", Hex::new(-3,  1)), // G7
-        ("blank", Hex::new(-2,  1)), // G9
-        ("blank", Hex::new(-1,  1)), // G11
-        ("blank_mountain", Hex::new( 0,  1)), // G13
-        ("G15", Hex::new( 1,  1)),
-        ("blank_2small", Hex::new( 2,  1)), // G17
-        ("G19", Hex::new( 3,  1)),
+        (HexName::new("G3"),  Hex::new(-5,  1), "blank"),
+        (HexName::new("G5"),  Hex::new(-4,  1), "blank"),
+        (HexName::new("G7"),  Hex::new(-3,  1), "blank_2small"),
+        (HexName::new("G9"),  Hex::new(-2,  1), "blank"), // G9
+        (HexName::new("G11"), Hex::new(-1,  1), "blank"),
+        (HexName::new("G13"), Hex::new( 0,  1), "blank_mountain"),
+        (HexName::new("G15"), Hex::new( 1,  1), "G15"),
+        (HexName::new("G17"), Hex::new( 2,  1), "blank_2small"),
+        (HexName::new("G19"), Hex::new( 3,  1), "G19"),
 
-        ("blank", Hex::new(-6,  2)), // H2
-        ("blank_1large", Hex::new(-5,  2)), // H4
-        ("blank", Hex::new(-4,  2)), // H6
-        ("blank", Hex::new(-3,  2)), // H8
-        ("blank_1large", Hex::new(-2,  2)), // H10
-        ("H12", Hex::new(-1,  2)),
-        ("blank", Hex::new( 0,  2)), // H14
-        ("blank_1large", Hex::new( 1,  2)), // H10
-        ("H18", Hex::new( 2,  2)),
+        (HexName::new("H2"),  Hex::new(-6,  2), "blank"),
+        (HexName::new("H4"),  Hex::new(-5,  2), "blank_1large"),
+        (HexName::new("H6"),  Hex::new(-4,  2), "blank"),
+        (HexName::new("H8"),  Hex::new(-3,  2), "blank"),
+        (HexName::new("H10"), Hex::new(-2,  2), "blank_1large"),
+        (HexName::new("H12"), Hex::new(-1,  2), "H12"),
+        (HexName::new("H14"), Hex::new( 0,  2), "blank"),
+        (HexName::new("H16"), Hex::new( 1,  2), "blank_1large"),
+        (HexName::new("H18"), Hex::new( 2,  2), "H18"),
 
-        ("blank", Hex::new(-6,  3)), // I3
-        ("blank", Hex::new(-5,  3)), // I5
-        ("blank", Hex::new(-4,  3)), // I7
-        ("blank", Hex::new(-3,  3)), // I9
-        ("blank_mountain", Hex::new(-2,  3)), // I11
-        ("blank", Hex::new(-1,  3)), // I13
-        ("I15", Hex::new( 0,  3)),
-        ("I17", Hex::new( 1,  3)),
-        ("I19", Hex::new( 2,  3)),
+        (HexName::new("I1"),  Hex::new(-7,  3), "blank"),
+        (HexName::new("I3"),  Hex::new(-6,  3), "blank"),
+        (HexName::new("I5"),  Hex::new(-5,  3), "blank"),
+        (HexName::new("I7"),  Hex::new(-4,  3), "blank"),
+        (HexName::new("I9"),  Hex::new(-3,  3), "blank"),
+        (HexName::new("I11"), Hex::new(-2,  3), "blank_mountain"),
+        (HexName::new("I13"), Hex::new(-1,  3), "blank"),
+        (HexName::new("I15"), Hex::new( 0,  3), "I15"),
+        (HexName::new("I17"), Hex::new( 1,  3), "I17"),
+        (HexName::new("I19"), Hex::new( 2,  3), "I19"),
 
-        ( "J2", Hex::new(-7,  4)),
-        ("blank", Hex::new(-6,  4)), // J4
-        ("blank", Hex::new(-5,  4)), // J6
-        ("blank", Hex::new(-4,  4)), // J8
-        ("blank_mountain", Hex::new(-3,  4)), // J10
-        ("blank_mountain", Hex::new(-2,  4)), // J12
-        ("J14", Hex::new(-1,  4)),
+        (HexName::new("J2"),  Hex::new(-7,  4), "J2"),
+        (HexName::new("J4"),  Hex::new(-6,  4), "blank"),
+        (HexName::new("J6"),  Hex::new(-5,  4), "blank"),
+        (HexName::new("J8"),  Hex::new(-4,  4), "blank"),
+        (HexName::new("J10"), Hex::new(-3,  4), "blank_mountain"),
+        (HexName::new("J12"), Hex::new(-2,  4), "blank_mountain"),
+        (HexName::new("J14"), Hex::new(-1,  4), "J14"),
 
-        ("K13", Hex::new(-2,  5)),
-        ("K15", Hex::new(-1,  5)),
+        (HexName::new("K13"), Hex::new(-2,  5), "K13"),
+        (HexName::new("K15"), Hex::new(-1,  5), "K15"),
     ];
 
-    for (tile_name, coord) in tiles {
+    for (hex_name, coord, tile_name) in hexes
+    {
         let world_pos = settings.hex_to_world_pos(coord);
 
         commands.spawn((
@@ -215,6 +245,7 @@ pub fn spawn_routemap(
             Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
             MapTile {
                 coord,
+                hex_name,
                 tile_name: tile_name.to_string(),
             },
         ));

@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::routemap::MapTile;
+use crate::routemap::HexName;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -170,7 +171,7 @@ pub fn advance_game_phase(
 
 pub fn place_tile(
     mut game_state: ResMut<GameState>,
-    mut tiles: Query<(&mut Sprite, &MapTile)>,
+    mut hexes: Query<(&mut Sprite, &MapTile)>,
     asset_server: Res<AssetServer>,
 ) {
     if game_state.tile_string.is_empty()
@@ -186,15 +187,11 @@ pub fn place_tile(
         .map(|s| s.to_string())
         .collect();
 
-    for (mut sprite, tile) in &mut tiles {
-        if tile.tile_name == v[0]
+    for (mut sprite, map_hex) in &mut hexes {
+        if map_hex.hex_name.name == v[0]
         {
             sprite.image = asset_server.load(v[1].clone());
             info!("Updated the image for {} to {}", v[0], v[1]);
-        }
-        else
-        {
-            info!("Hex {} is not the requested {}", tile.tile_name, v[0]);
         }
     }
     game_state.tile_string.clear();
