@@ -1,11 +1,15 @@
 // Game Model Module for 1830 Game
-// This module contains all the components, resources, and systems for the 1830 game model
+// This module contains components, resources, and systems for the 1830 game
+
+use std::collections::HashMap;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::routemap::MapTile;
 use crate::routemap::HexName;
+use crate::stockmarket::GridBox;
+use crate::stockmarket::StockMarketCell;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -85,6 +89,7 @@ pub enum Train {
 pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
+    pub market: HashMap<String, GridBox>,
     pub tile_string : String,
 }
 
@@ -283,6 +288,7 @@ pub fn setup_game(mut commands: Commands) {
     commands.insert_resource(GameState {
         phase: GamePhase::PurchasePrivateCompanies,
         bank: 12000,
+        market: HashMap::new(),
         tile_string : String::new(),
     });
 
