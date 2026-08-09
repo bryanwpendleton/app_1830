@@ -9,6 +9,7 @@ use bevy::window::{Monitor, PrimaryMonitor};
 
 use gamemodel::Game1830Plugin;
 use routemap::{setup_routemap, spawn_routemap, handle_tile_clicks};
+use stockmarket::initialize_stock_market;
 
 // Window sizing.
 //
@@ -42,7 +43,9 @@ fn main() {
         }))
         .add_plugins(EguiPlugin::default())
         .add_plugins(Game1830Plugin)
-        .add_systems(Startup, (setup_camera, setup_routemap, spawn_routemap).chain())
+        .add_systems(Startup, (setup_camera,
+                    setup_routemap, spawn_routemap,
+                    initialize_stock_market).chain())
         .add_systems(Update, (handle_tile_clicks, clamp_window_to_monitor))
         .run();
 }
