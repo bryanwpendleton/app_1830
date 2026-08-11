@@ -20,11 +20,23 @@ use crate::stockmarket::StockMarketCell;
 // corporation is controlled by its leading stock holder—its president.
 // You expand your railroads and generate revenue by building track
 // on the map, buying trains, and operating those trains. 
+//
+// Each player has assets:
+// - personal money
+// - shares of railroad corporations
+// - private companies (usually closed by end of game)
+
+pub struct PlayerAssets {
+    personal_money: u32,
+    corporations: [u32;8], // Indexed by Corporation enum
+    private_companies: [u32;6], // Indexed by PrivateCompany enum
+}
 
 /// Marks an entity as a player in the game
 #[derive(Component)]
 pub struct Player {
     pub name: String,
+    pub assets: PlayerAssets,
 }
 
 // 1830 uses a stock market. You and the other players buy and
@@ -62,12 +74,12 @@ pub struct RailroadPresident;
 /// Represents a PrivateCompany
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrivateCompany {
-    SchuykillValue,
-    ChamplainAndStLawrence,
-    DelawareAndHudson,
-    MohawkAndHudson,
-    CamdenAndAmboy,
-    BaltimoreAndOhio,
+    SchuykillValley = 0,
+    ChamplainAndStLawrence = 1,
+    DelawareAndHudson = 2,
+    MohawkAndHudson = 3,
+    CamdenAndAmboy = 4,
+    BaltimoreAndOhio = 5,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -78,6 +90,18 @@ pub enum Train {
     Five = 5,
     Six = 6,
     Diesel = 7,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Corporation {
+    Pennsylvania = 0,
+    NewYorkCentral = 1,
+    CanadianPacific = 2,
+    BaltimoreAndOhio = 3,
+    ChesapeakeAndOhio = 4,
+    Erie = 5,
+    NewYorkNewHavenAndHartford = 6,
+    BostonAndMaine = 7,
 }
 
 // ============================================================================
