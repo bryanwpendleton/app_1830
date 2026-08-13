@@ -145,6 +145,25 @@ pub struct GameState {
 }
 
 impl GameState {
+    /// The initial game state for a fresh game.
+    ///
+    /// Inserted at plugin-build time (see [`Game1830Plugin`]) so the resource
+    /// exists before the first `RoundState` transition, which Bevy runs once
+    /// prior to `PreStartup` -- earlier than any `Startup` system.
+    pub fn new() -> Self {
+        GameState {
+            phase: GamePhase::PurchasePrivateCompanies,
+            bank: 12000 - 2400, // 2400 is the initial money for the players.
+            num_players: 0,
+            market: HashMap::new(),
+            market_state: MarketState {
+                passes: 0,
+                last_buy_sell: 0,
+            },
+            tile_string: String::new(),
+        }
+    }
+
     /// Advance the game to the next phase, returning a log message.
     /// Shared by the `advance_game_phase` system and the UI panel button.
     pub fn advance_phase(&mut self) -> &'static str {
@@ -211,6 +230,79 @@ pub enum GamePhase {
     SixTrains,
     DieselTrains,
     EndGame,
+}
+
+// ============================================================================
+// ROUNDS - State + SystemSets for the Stock/Operating round cycle
+// ============================================================================
+
+// The game runs as a sequence of rounds that alternate between a Stock Round
+// (players buy and sell shares) and an Operating Round (corporations lay track,
+// run trains, and pay out). Certain one-shot actions happen at the *start* of
+// each round.
+//
+// We model "which round we're in" as a Bevy `States` type.
+// On every transition Bevy runs the `OnEnter`/`OnExit` schedules
+// for the state, which is where the start-of-round setup belongs.
+//
+// The `RoundSet` SystemSets then group the *recurring* (per-frame) systems that
+// run throughout each round, so they can be ordered and gated together.
+
+/// Which kind of round is currently active. Transitions between the two are
+/// driven through `NextState<RoundState>` (see [`advance_round`]).
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RoundState {
+    /// Players buy and sell shares. 1830 always opens with a Stock Round.
+    #[default]
+    StockRound,
+    /// Corporations lay track, run trains, and pay dividends.
+    OperatingRound,
+}
+
+/// SystemSets for the recurring, per-frame systems belonging to each round.
+///
+/// Group a round's ongoing systems into the matching set; the set is gated to
+/// run only while that round is active (configured in [`Game1830Plugin`]). The
+/// one-shot start-of-round work is scheduled in `OnEnter(RoundState::...)`
+/// instead, not in these sets.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RoundSet {
+    StockRound,
+    OperatingRound,
+}
+
+/// Runs once each time a Stock Round begins (on entering
+/// [`RoundState::StockRound`]).
+///
+/// Resets the pass tracking that determines when the round ends. The priority
+/// deal and current-player selection will be wired in here as those systems
+/// come online.
+pub fn start_stock_round(mut game_state: ResMut<GameState>) {
+    game_state.market_state.passes = 0;
+    game_state.market_state.last_buy_sell = 0;
+    info!("=== Stock Round starting ===");
+}
+
+/// Runs once each time an Operating Round begins (on entering
+/// [`RoundState::OperatingRound`]).
+pub fn start_operating_round() {
+    info!("=== Operating Round starting ===");
+}
+
+/// Advances to the other round type, triggering that round's `OnEnter` systems.
+///
+/// This is intentionally *not* scheduled to run every frame (doing so would
+/// flip the round each tick). Call it, or schedule it behind a run condition,
+/// when the current round has ended.
+pub fn advance_round(
+    current: Res<State<RoundState>>,
+    mut next: ResMut<NextState<RoundState>>,
+) {
+    let upcoming = match current.get() {
+        RoundState::StockRound => RoundState::OperatingRound,
+        RoundState::OperatingRound => RoundState::StockRound,
+    };
+    next.set(upcoming);
 }
 
 // ============================================================================
@@ -335,18 +427,7 @@ pub fn game_state_panel(
 }
 
 /// System to initialize game resources
-pub fn setup_game(mut commands: Commands) {
-    commands.insert_resource(GameState {
-        phase: GamePhase::PurchasePrivateCompanies,
-        bank: 12000 - 2400, // 2400 is the initial money for the players.
-        num_players: 0,
-        market: HashMap::new(),
-        market_state: MarketState {
-            passes: 0,
-            last_buy_sell: 0,
-        },
-        tile_string : String::new(),
-    });
+pub fn setup_game() {
 
     info!("Game initialized");
 }
@@ -400,8 +481,31 @@ pub struct Game1830Plugin;
 impl Plugin for Game1830Plugin {
     fn build(&self, app: &mut App) {
         app
+            .insert_resource(GameState::new())
+
+            .init_state::<RoundState>()
+
             // Setup systems run once at startup
             .add_systems(Startup, (setup_game, setup_dummy_players).chain())
+
+            // Start-of-round actions: run once on each transition into the
+            // corresponding round, via the OnEnter schedules.
+            .add_systems(
+                OnEnter(RoundState::StockRound), start_stock_round)
+            .add_systems(
+                OnEnter(RoundState::OperatingRound), start_operating_round)
+
+            // Gate each round's recurring SystemSet so its members only run
+            // while that round is the active state.
+            .configure_sets(
+                Update,
+                (
+                    RoundSet::StockRound.run_if(
+                        in_state(RoundState::StockRound)),
+                    RoundSet::OperatingRound.run_if(
+                        in_state(RoundState::OperatingRound)),
+                ),
+            )
 
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
