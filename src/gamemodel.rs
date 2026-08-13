@@ -33,11 +33,38 @@ pub struct PlayerAssets {
 }
 
 /// Marks an entity as a player in the game
+///
+/// For the proper operation of the Stock Rounds, we have to
+/// keep track of the Players so that we satisfy the following:
+///
+/// - players take turns in order, the order is decided when
+///   when the game starts and doesn't change. Each player
+///   knows his/her order number, and the total number of
+///   players is global GameState.
+/// - the current player is the one taking a turn, then the
+///   next player in order gets to take a turn.
+/// - when all players have consecutively passed, the current
+///   round ends. The number of consecutive passes is global
+///   GameState, incremented when the current player passes
+///   and reset to zero when a play buys or sells
+/// - the player immediatel after the last player that bought or
+///   sold a certificate is given the priority deal card, indicating
+///   that player takes the first turn in the next stock round.
+///
 #[derive(Component)]
 pub struct Player {
     pub name: String,
+    pub order: u32, // next player is (order + 1) modulo num_players
     pub assets: PlayerAssets,
 }
+
+/// Marks the currently active player (whose turn it is)
+#[derive(Component)]
+pub struct CurrentPlayer;
+
+/// Marks the Player who starts the next Stock Round
+#[derive(Component)]
+pub struct PriorityDealCard;
 
 // 1830 uses a stock market. You and the other players buy and
 // sell shares in the railroad corporations. If you own the most
@@ -49,27 +76,25 @@ pub struct Player {
 // dividends while you can, and sell first when your money could
 // be better used elsewhere. 
 
+/// Tracking when a Stock Round is over:
+/// - when a player passes, passes is incremented
+///   and if passes is num == GameState.num_players, round is over
+/// - otherwise last_buy_sell is set to this player
+///   and passes is set to zero.
+pub struct MarketState {
+    pub passes: u32,
+    pub last_buy_sell: u32,
+}
+
 /// Marks an entity as a Railroad Corporation
 #[derive(Component)]
 pub struct RailroadCorporation {
     pub name: String,
 }
 
-// ============================================================================
-// MARKER COMPONENTS - Used to tag/identify entities
-// ============================================================================
-
-/// Marks the currently active player (whose turn it is)
-#[derive(Component)]
-pub struct ActivePlayer;
-
 /// Marks a RailroadPresident
 #[derive(Component)]
 pub struct RailroadPresident;
-
-// ============================================================================
-// DATA STRUCTURES
-// ============================================================================
 
 /// Represents a PrivateCompany
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,7 +138,9 @@ pub enum Corporation {
 pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
+    pub num_players: u32,
     pub market: HashMap<String, GridBox>,
+    pub market_state: MarketState,
     pub tile_string : String,
 }
 
@@ -311,12 +338,56 @@ pub fn game_state_panel(
 pub fn setup_game(mut commands: Commands) {
     commands.insert_resource(GameState {
         phase: GamePhase::PurchasePrivateCompanies,
-        bank: 12000,
+        bank: 12000 - 2400, // 2400 is the initial money for the players.
+        num_players: 0,
         market: HashMap::new(),
+        market_state: MarketState {
+            passes: 0,
+            last_buy_sell: 0,
+        },
         tile_string : String::new(),
     });
 
     info!("Game initialized");
+}
+
+/// Spawns a [`Player`] entity for each name in `names`, initializing their
+/// [`PlayerAssets`] for the start of a new game.
+///
+/// The starting bank is split evenly among the players: each begins with
+/// `2400 / players` in personal money and holds no corporation shares or
+/// private companies yet.
+pub fn create_players(commands: &mut Commands,
+                    game_state: &mut GameState,
+                    names: Vec<String>)
+{
+    let num_players: u32 = names.len() as u32;
+    let starting_money = 2400 / num_players;
+    let mut player_order = 0;
+
+    game_state.num_players = num_players;
+
+    for name in names {
+        commands.spawn(Player {
+            name,
+            order: player_order,
+            assets: PlayerAssets {
+                personal_money: starting_money,
+                corporations: [0; 8],
+                private_companies: [0; 6],
+            },
+        });
+        player_order += 1;
+    }
+}
+
+/// System to initialize a dummy game with 3 players
+pub fn setup_dummy_players(mut commands: Commands,
+                    mut game_state: ResMut<GameState>)
+{
+    create_players( &mut commands,
+            &mut game_state,
+            vec!["Bryan".into(), "Dan".into(), "Tay".into()]);
 }
 
 // ============================================================================
@@ -330,7 +401,7 @@ impl Plugin for Game1830Plugin {
     fn build(&self, app: &mut App) {
         app
             // Setup systems run once at startup
-            .add_systems(Startup, setup_game)
+            .add_systems(Startup, (setup_game, setup_dummy_players).chain())
 
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
