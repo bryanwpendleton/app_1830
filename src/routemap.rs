@@ -1,7 +1,12 @@
+
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 use hexx::Hex;
 use hexx::HexLayout;
+
+use crate::stockmarket::GridBox;
 
 /*
     The routemap supports the Operating Round(s) of 1830.
@@ -31,6 +36,8 @@ pub struct MapTile {
     pub coord: Hex,
     pub hex_name: HexName,
     pub tile_name: String,
+    pub connectivity: HashMap<String, Option<u32> >,
+    pub market: HashMap<String, GridBox>,
 }
 
 /*
@@ -246,6 +253,8 @@ pub fn spawn_routemap(
             MapTile {
                 coord,
                 hex_name,
+                connectivity: HashMap::new(),
+                market: HashMap::new(),
                 tile_name: tile_name.to_string(),
             },
         ));
@@ -298,5 +307,50 @@ info!("Is there a tile at {:?}", hex_coord);
 }
 
 /*
-    Here are the 1830 TrackTile entities.
+    Route finding overview.
+   
+    A route must connect two cities. There are 48 (check this!) cities
+    in the 1830 map. So there are potentially a lot of routes, but
+    most of these routes do not exist because track must be laid first.
+   
+    We can use the a_star algorithm to compute the routes.
+   
+    For each hex in the map (93? check this), we need to keep track
+    of whether or it is connected to each of its 6 neighbors. This
+    enables us to have a cost function for the a_start algorithm that
+    returns either "yes" or "no" when the algorithm asks us if a
+    pair of hexes are connected.
+   
+    At the start of the game, we set up the connectivity table for
+    each hex. Nearly all entries are "no connection" at this point.
+   
+    Each time a track tile is placed, we update the connectivity
+    table for that hex and for each of its 6 neighbors. Over time
+    the track starts to form connections and routes emerge. Note
+    that this computation is also where we ensure legal tile upgrades
+    as they must maintain existing connectivity.
+   
+    Some of the connectivity is dynamic, for example a station marker
+    may restrict a route to only the railroad that placed that marker.
+   
+    Some route restrictions may only be evaluated after the
+    potential route has been computed, for example the route must
+    contain at least one of the railroad's own station markers.
+   
+    Some route restrictions may only be evaluated after a complete
+    set of candidate routes has been computed, e.g. when a
+    railroad has two or more trains each runing a route,
+    none of those routes may use the same track.
+   
+    Due to applying restrictions, the route computation system needs
+    needs to:
+    - compute all the potential results, discarding those that meet
+      any single-route restrictions.
+    - considering the multi-route restrictions, form route sets
+      that pass those restrictions by discarding one or more routes
+      until the restrictions are met.
+   
+    At that point the routes can be combined with the railroad's
+    available trains to compute the highest-revenue set, and that
+    is used to pay dividends or add to the corporate treasury.
  */
