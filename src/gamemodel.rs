@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
+use hexx::Hex;
+
 use crate::routemap::MapTile;
 use crate::routemap::HexName;
 use crate::stockmarket::GridBox;
@@ -139,8 +141,13 @@ pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
     pub num_players: u32,
+
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
+
+    // pub route_map: HashMap<String, MapTile>,
+    // pub route_tiles: HashMap<Hex, MapTile>,
+
     pub tile_string : String,
 }
 
@@ -160,6 +167,8 @@ impl GameState {
                 passes: 0,
                 last_buy_sell: 0,
             },
+            route_map: HashMap::new(),
+            route_tiles: HashMap::new(),
             tile_string: String::new(),
         }
     }

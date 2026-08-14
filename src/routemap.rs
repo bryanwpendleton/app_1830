@@ -5,8 +5,10 @@ use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 use hexx::Hex;
 use hexx::HexLayout;
+use hexx::algorithms::a_star;
 
 use crate::stockmarket::GridBox;
+use crate::gamemodel::GameState;
 
 /*
     The routemap supports the Operating Round(s) of 1830.
@@ -26,18 +28,31 @@ use crate::stockmarket::GridBox;
     routemap is always visible on the screen.
  */
 
-#[derive(Component)]
+#[derive(Component,Eq, Hash, PartialEq, Clone)]
 pub struct HexName {
     pub name: String,
 }
 
-#[derive(Component)]
+#[derive(Resource)]
 pub struct MapTile {
     pub coord: Hex,
     pub hex_name: HexName,
     pub tile_name: String,
-    pub connectivity: HashMap<String, Option<u32> >,
+    pub connectivity: HashMap<String, u32>,
     pub market: HashMap<String, GridBox>,
+}
+
+impl MapTile {
+/*
+    pub fn route_cost(start: &MapTile, end: &MapTile) -> Option<u32> {
+        if let Some(cost) = start.connectivity.get(&end.hex_name.name)
+        {
+            cost.unwrap()
+        }
+        
+        Some(0 as u32)
+    }
+*/
 }
 
 /*
@@ -116,6 +131,7 @@ pub fn setup_routemap(
 
 pub fn spawn_routemap(
     mut commands: Commands,
+    mut game_state: ResMut<GameState>,
     asset_server: Res<AssetServer>,
     settings: Res<HexSettings>,
 ) {
@@ -246,18 +262,22 @@ pub fn spawn_routemap(
     for (hex_name, coord, tile_name) in hexes
     {
         let world_pos = settings.hex_to_world_pos(coord);
-
-        commands.spawn((
-            Sprite::from_image(asset_server.load(format!("Map/{}.png", tile_name))),
-            Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
-            MapTile {
+        let mut map_tile = MapTile {
                 coord,
                 hex_name,
                 connectivity: HashMap::new(),
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
-            },
+            };
+        commands.insert_resource( map_tile );
+
+        commands.spawn((
+            Sprite::from_image(asset_server.load(format!("Map/{}.png", tile_name))),
+            Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
+            map_tile,
         ));
+        // game_state.route_map.insert(hex_name.name, map_tile);
+        // game_state.route_tiles.insert(coord, map_tile);
     }
 }
 
@@ -354,3 +374,24 @@ info!("Is there a tile at {:?}", hex_coord);
     available trains to compute the highest-revenue set, and that
     is used to pay dividends or add to the corporate treasury.
  */
+
+/// System to perform some simple routefinding tests on the empty
+/// map present at startup. Since this leaves the game map modified,
+/// it will be removed once the routefinding module is stabilized.
+pub fn do_simple_routefinding_tests(
+    mut game_state: ResMut<GameState>,
+) {         
+    // On an empty map, there should be no path from A9 to B10.
+
+/*
+    let start = Hex::new(-1, -5);
+    let end = Hex::new(1, -4);
+
+    let path = a_star(start, end, |a, b| {
+        MapTile::route_cost(game_state.route_tiles.get(&a),
+                   game_state.route_tiles.get(&b))
+    });
+
+    info!("Empty map path from A9 to B10 is: {:?}", path);
+*/
+}

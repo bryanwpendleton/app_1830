@@ -26,7 +26,7 @@ use crate::gamemodel::GameState;
 /// This purchase counts as your one certificate purchase for the
 /// turn.
 ///
-#[derive(Component)]
+#[derive(Component, Clone)]
 enum GridBoxColor {
     Clear,
     Yellow,
@@ -41,6 +41,7 @@ enum GridBoxColor {
 /// - a share value
 /// - a color
 /// - the up, down, right, and left destinations upon movement
+#[derive(Clone)]
 pub struct GridBox
 {
     name: String,
