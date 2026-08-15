@@ -33,7 +33,13 @@ pub struct HexName {
     pub name: String,
 }
 
-#[derive(Resource)]
+/// MapTile describes a single hex of the route map.
+///
+/// Each MapTile component wraps a single hexx::hex instance with some
+/// additional metadata such as which track tile (if any) has been
+/// currently placed here and whether there is a station marker present.
+///
+#[derive(Component)]
 pub struct MapTile {
     pub coord: Hex,
     pub hex_name: HexName,
@@ -43,16 +49,21 @@ pub struct MapTile {
 }
 
 impl MapTile {
-/*
-    pub fn route_cost(start: &MapTile, end: &MapTile) -> Option<u32> {
-        if let Some(cost) = start.connectivity.get(&end.hex_name.name)
-        {
-            cost.unwrap()
-        }
-        
-        Some(0 as u32)
+    /// Cost to traverse from this tile to `dest`.
+    ///
+    /// Track connections are recorded in `connectivity`, keyed by the
+    /// neighbor's `HexName` string, with the step cost as the value. Returns
+    /// `None` when the two tiles are not connected -- which the `a_star` cost
+    /// function treats as "no edge here". On the empty starting map no
+    /// connections exist, so every pair returns `None`.
+    ///
+    /// Connectivity is a pair-wise concept: a must have connectivity
+    /// to b and vice versa, otherwise the pair have no connectivity.
+    /// FIXME: have to check both connectivity directions.
+    ///
+    pub fn route_cost(&self, dest: &MapTile) -> Option<u32> {
+        self.connectivity.get(&dest.hex_name.name).copied()
     }
-*/
 }
 
 /*
@@ -259,25 +270,34 @@ pub fn spawn_routemap(
         (HexName::new("K15"), Hex::new(-1,  5), "K15"),
     ];
 
+    // For each hex in our game map, a MapTile component holds
+    // various metadata about that hex's current state. The
+    // MapTile entities may be rapidly located by using global
+    // indices in the GameState resource.
+    //
+    // GameState keeps only the indices, so any system can resolve
+    // a hex -- by coordinate or by name -- to its entity,
+    // then read/mutate the `MapTile` through a query.
+
     for (hex_name, coord, tile_name) in hexes
     {
         let world_pos = settings.hex_to_world_pos(coord);
-        let mut map_tile = MapTile {
+
+        let entity = commands.spawn((
+            Sprite::from_image(asset_server.load(
+                                format!("Map/{}.png", tile_name))),
+            Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
+            MapTile {
                 coord,
-                hex_name,
+                hex_name: hex_name.clone(),
                 connectivity: HashMap::new(),
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
-            };
-        commands.insert_resource( map_tile );
+            },
+        )).id();
 
-        commands.spawn((
-            Sprite::from_image(asset_server.load(format!("Map/{}.png", tile_name))),
-            Transform::from_xyz(world_pos.x, world_pos.y, 0.0),
-            map_tile,
-        ));
-        // game_state.route_map.insert(hex_name.name, map_tile);
-        // game_state.route_tiles.insert(coord, map_tile);
+        game_state.tile_by_coord.insert(coord, entity);
+        game_state.tile_by_name.insert(hex_name.name, entity);
     }
 }
 
@@ -379,19 +399,40 @@ info!("Is there a tile at {:?}", hex_coord);
 /// map present at startup. Since this leaves the game map modified,
 /// it will be removed once the routefinding module is stabilized.
 pub fn do_simple_routefinding_tests(
-    mut game_state: ResMut<GameState>,
-) {         
+    game_state: Res<GameState>,
+    tile_query: Query<&MapTile>,
+) {
     // On an empty map, there should be no path from A9 to B10.
+    let start = Hex::new(1, -5);  // A9
+    let end = Hex::new(1, -4);    // B10
 
-/*
-    let start = Hex::new(-1, -5);
-    let end = Hex::new(1, -4);
+    // The a_star cost function receives raw hex coordinates.
+    // We resolve each to its tile entity through the GameState
+    // indices, read the `MapTile` components via the query,
+    // and defer to `MapTile::route_cost`.
+    //
+    // a_star probes `cost(start, start)` and `cost(end, end)`
+    // to decide whether the endpoints participate at all,
+    // so a tile must report a finite cost to itself
+    // `a == b` to `Some(0)`; all other pairs consult the
+    // connectivity table.
+    //
+    // Connectivity is a pair-wise concept: a must have connectivity
+    // to b and vice versa, otherwise the pair have no connectivity.
+    //
+    let cost = |a: Hex, b: Hex| -> Option<u32> {
+        if a == b {
+            return Some(0);
+        }
+        let start_entity = *game_state.tile_by_coord.get(&a)?;
+        let end_entity = *game_state.tile_by_coord.get(&b)?;
+        let start_tile = tile_query.get(start_entity).ok()?;
+        let end_tile = tile_query.get(end_entity).ok()?;
 
-    let path = a_star(start, end, |a, b| {
-        MapTile::route_cost(game_state.route_tiles.get(&a),
-                   game_state.route_tiles.get(&b))
-    });
+        start_tile.route_cost(end_tile)
+    };
+
+    let path = a_star(start, end, cost);
 
     info!("Empty map path from A9 to B10 is: {:?}", path);
-*/
 }

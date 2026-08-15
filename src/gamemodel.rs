@@ -145,8 +145,14 @@ pub struct GameState {
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
 
-    // pub route_map: HashMap<String, MapTile>,
-    // pub route_tiles: HashMap<Hex, MapTile>,
+    // tile_by_coord and tile_by_name provide search indices to the MapTile
+    // entities.  Each `MapTile` lives in its own entity spawned by
+    // `spawn_routemap`. These maps let any system that has `GameState`
+    // resolve a hex to its `Entity` -- by axial coordinate or by
+    // its `HexName` string.
+    //
+    pub tile_by_coord: HashMap<Hex, Entity>,
+    pub tile_by_name: HashMap<String, Entity>,
 
     pub tile_string : String,
 }
@@ -167,8 +173,8 @@ impl GameState {
                 passes: 0,
                 last_buy_sell: 0,
             },
-            route_map: HashMap::new(),
-            route_tiles: HashMap::new(),
+            tile_by_coord: HashMap::new(),
+            tile_by_name: HashMap::new(),
             tile_string: String::new(),
         }
     }
