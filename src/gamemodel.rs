@@ -10,6 +10,7 @@ use hexx::Hex;
 
 use crate::routemap::MapTile;
 use crate::routemap::HexName;
+use crate::routemap::TrackInventoryQuantity;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
 
@@ -154,6 +155,11 @@ pub struct GameState {
     pub tile_by_coord: HashMap<Hex, Entity>,
     pub tile_by_name: HashMap<String, Entity>,
 
+    // Index into the track-tile inventory, keyed by `tile_number`.
+    // Each entry's entity is a `TrackInventoryQuantity` recording
+    // how many copies of that tile are available to be placed.
+    pub inventory_by_number: HashMap<u32, Entity>,
+
     pub tile_string : String,
 }
 
@@ -175,6 +181,7 @@ impl GameState {
             },
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
+            inventory_by_number: HashMap::new(),
             tile_string: String::new(),
         }
     }
@@ -332,9 +339,23 @@ pub fn advance_game_phase(
     info!("{}", msg);
 }
 
+/// Places a track tile on a map hex, maintaining the tile inventory.
+///
+/// The request is carried in `game_state.tile_string`, formatted as
+/// `hex_name:image_path:tile_number` (e.g. `"F12:Map/T57.png:57"`).
+///
+/// Placement rules enforced here:
+///   - The tile to place must have non-zero inventory; otherwise the placement
+///     is rejected.
+///   - If the target hex already holds a track tile, that tile is lifted and
+///     returned to inventory (its quantity is incremented) before the new tile
+///     is placed.
+///   - Placing the new tile decrements its inventory and records its
+///     `tile_number` in the hex's `MapTile::placed_tile`.
 pub fn place_tile(
     mut game_state: ResMut<GameState>,
-    mut hexes: Query<(&mut Sprite, &MapTile)>,
+    mut hexes: Query<(&mut Sprite, &mut MapTile)>,
+    mut inventory: Query<&mut TrackInventoryQuantity>,
     asset_server: Res<AssetServer>,
 ) {
     if game_state.tile_string.is_empty()
@@ -350,14 +371,72 @@ pub fn place_tile(
         .map(|s| s.to_string())
         .collect();
 
-    for (mut sprite, map_hex) in &mut hexes {
-        if map_hex.hex_name.name == v[0]
-        {
-            sprite.image = asset_server.load(v[1].clone());
-            info!("Updated the image for {} to {}", v[0], v[1]);
+    // Always consume the request, whether or not it turns out to be valid.
+    game_state.tile_string.clear();
+
+    if v.len() != 3 {
+        info!("Malformed tile request, expected hex_name:image:tile_number");
+        return;
+    }
+    let (hex_name, image_path) = (&v[0], &v[1]);
+    let Ok(new_number) = v[2].parse::<u32>() else {
+        info!("Bad tile_number in tile request: {}", v[2]);
+        return;
+    };
+
+    // Resolve the target hex and the incoming tile's inventory via the indices.
+    let Some(&hex_entity) = game_state.tile_by_name.get(hex_name) else {
+        info!("No tile named {}", hex_name);
+        return;
+    };
+    let Some(&new_inv_entity) = game_state.inventory_by_number.get(&new_number) else {
+        info!("No inventory for tile number {}", new_number);
+        return;
+    };
+
+    // Rule 1: the tile to place must be available.
+    match inventory.get(new_inv_entity) {
+        Ok(q) if q.quantity > 0 => {}
+        Ok(_) => {
+            info!("Tile {} is out of stock", new_number);
+            return;
+        }
+        Err(_) => {
+            info!("Inventory entity for tile {} missing", new_number);
+            return;
         }
     }
-    game_state.tile_string.clear();
+
+    let Ok((mut sprite, mut map_tile)) = hexes.get_mut(hex_entity) else {
+        info!("Map tile entity for {} missing", hex_name);
+        return;
+    };
+
+    // Rule 2: if a tile is already here, lift it back into inventory. Its
+    // inventory entity is a different one than the incoming tile's (unless it's
+    // the same number, in which case the net effect is a no-op we still perform
+    // step by step), so resolve and update it independently.
+    let old_number = map_tile.placed_tile;
+    if old_number != 0 {
+        if let Some(&old_inv_entity) = game_state.inventory_by_number.get(&old_number) {
+            if let Ok(mut old_q) = inventory.get_mut(old_inv_entity) {
+                old_q.quantity += 1;
+                info!("Returned tile {} to inventory ({} available)",
+                    old_number, old_q.quantity);
+            }
+        }
+    }
+
+    // Rule 3: take the new tile from inventory and place it.
+    if let Ok(mut new_q) = inventory.get_mut(new_inv_entity) {
+        new_q.quantity -= 1;
+        info!("Took tile {} from inventory ({} remaining)",
+            new_number, new_q.quantity);
+    }
+
+    map_tile.placed_tile = new_number;
+    sprite.image = asset_server.load(image_path.clone());
+    info!("Placed tile {} on {} (image {})", new_number, hex_name, image_path);
 }
 
 /// Renders the game info panel bound to [`GameState`].

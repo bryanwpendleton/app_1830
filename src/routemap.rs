@@ -44,6 +44,9 @@ pub struct MapTile {
     pub coord: Hex,
     pub hex_name: HexName,
     pub tile_name: String,
+    /// The `tile_number` of the [`TrackTile`] currently laid on this hex, or
+    /// `0` when no track tile is placed here (`0` is not a valid tile number).
+    pub placed_tile: u32,
     pub connectivity: HashMap<String, u32>,
     pub market: HashMap<String, GridBox>,
 }
@@ -75,12 +78,12 @@ impl MapTile {
  */
 
 #[derive(Component)]
-struct TrackTile {
-    tile_number: u32,
+pub struct TrackTile {
+    pub tile_number: u32,
 }
 
 #[derive(Component)]
-enum TrackColor {
+pub enum TrackColor {
     Yellow,
     Green,
     Orange,
@@ -89,6 +92,216 @@ enum TrackColor {
 #[derive(Component)]
 struct TrackRotation {
     rotation: u32,      // facing 3 means rotated twice.
+}
+
+/// How many copies of a given track tile remain available to be placed.
+///
+/// Each TrackTile has its own current inventory, which determines
+/// whether a tile is by that number can be placed at this time.
+///
+/// `quantity` drops by one each time the tile is laid on the map, and rises by
+/// one when a placed tile is lifted (i.e. replaced by an upgrade).
+#[derive(Component)]
+pub struct TrackInventoryQuantity {
+    pub quantity: u32,
+}
+
+/// Startup system that builds the initial track-tile inventory.
+///
+/// For each distinct track tile in the 1830 set, this should:
+///   1. spawn one entity with `(TrackTile { tile_number },
+///      TrackInventoryQuantity { quantity })`, `quantity` being the starting
+///      count for that tile, and
+///   2. record it in `game_state.inventory_by_number`, keyed by `tile_number`,
+///      so `place_tile` can look it up directly.
+pub fn spawn_tracktile_inventory(
+    mut commands: Commands,
+    mut game_state: ResMut<GameState>,
+) {
+    game_state.inventory_by_number.insert(1,
+        commands.spawn(( TrackTile { tile_number: 1 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(2,
+        commands.spawn(( TrackTile { tile_number: 2 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(3,
+        commands.spawn(( TrackTile { tile_number: 3 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(4,
+        commands.spawn(( TrackTile { tile_number: 4 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(7,
+        commands.spawn(( TrackTile { tile_number: 7 },
+                    TrackInventoryQuantity { quantity: 4 },
+        )).id() );
+    game_state.inventory_by_number.insert(8,
+        commands.spawn(( TrackTile { tile_number: 8 },
+                    TrackInventoryQuantity { quantity: 8 },
+        )).id() );
+    game_state.inventory_by_number.insert(9,
+        commands.spawn(( TrackTile { tile_number: 9 },
+                    TrackInventoryQuantity { quantity: 7 },
+        )).id() );
+    game_state.inventory_by_number.insert(14,
+        commands.spawn(( TrackTile { tile_number: 14 },
+                    TrackInventoryQuantity { quantity: 3 },
+        )).id() );
+    game_state.inventory_by_number.insert(15,
+        commands.spawn(( TrackTile { tile_number: 15 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(16,
+        commands.spawn(( TrackTile { tile_number: 16 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(18,
+        commands.spawn(( TrackTile { tile_number: 18 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(19,
+        commands.spawn(( TrackTile { tile_number: 19 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(20,
+        commands.spawn(( TrackTile { tile_number: 20 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(23,
+        commands.spawn(( TrackTile { tile_number: 23 },
+                    TrackInventoryQuantity { quantity: 3 },
+        )).id() );
+    game_state.inventory_by_number.insert(24,
+        commands.spawn(( TrackTile { tile_number: 24 },
+                    TrackInventoryQuantity { quantity: 3 },
+        )).id() );
+    game_state.inventory_by_number.insert(25,
+        commands.spawn(( TrackTile { tile_number: 25 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(26,
+        commands.spawn(( TrackTile { tile_number: 26 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(27,
+        commands.spawn(( TrackTile { tile_number: 27 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(28,
+        commands.spawn(( TrackTile { tile_number: 28 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(29,
+        commands.spawn(( TrackTile { tile_number: 29 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(39,
+        commands.spawn(( TrackTile { tile_number: 39 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(40,
+        commands.spawn(( TrackTile { tile_number: 40 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(41,
+        commands.spawn(( TrackTile { tile_number: 41 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(42,
+        commands.spawn(( TrackTile { tile_number: 42 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(43,
+        commands.spawn(( TrackTile { tile_number: 43 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(44,
+        commands.spawn(( TrackTile { tile_number: 44 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(45,
+        commands.spawn(( TrackTile { tile_number: 45 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(46,
+        commands.spawn(( TrackTile { tile_number: 46 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(47,
+        commands.spawn(( TrackTile { tile_number: 47 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(53,
+        commands.spawn(( TrackTile { tile_number: 53 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(54,
+        commands.spawn(( TrackTile { tile_number: 54 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(55,
+        commands.spawn(( TrackTile { tile_number: 55 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(59,
+        commands.spawn(( TrackTile { tile_number: 59 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(56,
+        commands.spawn(( TrackTile { tile_number: 56 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(57,
+        commands.spawn(( TrackTile { tile_number: 57 },
+                    TrackInventoryQuantity { quantity: 4 },
+        )).id() );
+    game_state.inventory_by_number.insert(58,
+        commands.spawn(( TrackTile { tile_number: 58 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(61,
+        commands.spawn(( TrackTile { tile_number: 61 },
+                    TrackInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(62,
+        commands.spawn(( TrackTile { tile_number: 62 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(63,
+        commands.spawn(( TrackTile { tile_number: 63 },
+                    TrackInventoryQuantity { quantity: 3 },
+        )).id() );
+    game_state.inventory_by_number.insert(64,
+        commands.spawn(( TrackTile { tile_number: 64 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(65,
+        commands.spawn(( TrackTile { tile_number: 65 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(66,
+        commands.spawn(( TrackTile { tile_number: 66 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(67,
+        commands.spawn(( TrackTile { tile_number: 67 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(68,
+        commands.spawn(( TrackTile { tile_number: 68 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(69,
+        commands.spawn(( TrackTile { tile_number: 69 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.inventory_by_number.insert(70,
+        commands.spawn(( TrackTile { tile_number: 70 },
+                    TrackInventoryQuantity { quantity: 1 },
+        )).id() );
 }
 
 #[derive(Resource)]
@@ -293,6 +506,7 @@ pub fn spawn_routemap(
                 connectivity: HashMap::new(),
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
+                placed_tile: 0, // 0 = no track tile placed yet
             },
         )).id();
 
