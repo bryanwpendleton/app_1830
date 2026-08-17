@@ -70,6 +70,20 @@ pub enum HexColor {
     Tan,
 }
 
+/// The seven yellow hexes on the map have a HexLabel. 
+/// - OO : These 4 hexes are the "Map 2 cities" hexes D10, E5, E11, H18
+/// - NY : This hex is New York City: G19
+/// -  B : These two hexes are Boston and Baltimore: E23, I15
+/// These hexes have special tile placement and upgrade rules, e.g.:
+/// only green tiles may be placed on yellow hexes. If the hex has
+/// a label (OO, B, or NY), the tile must have a matching label.
+#[derive(Component)]
+pub enum HexLabel {
+    OO,
+    NY,
+    B,
+}
+
 impl MapTile {
     /// Cost to traverse from this tile to `dest`.
     ///
