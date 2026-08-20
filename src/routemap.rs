@@ -45,11 +45,12 @@ pub struct MapTile {
     pub hex_color: HexColor,
     pub hex_name: HexName,
     pub tile_name: String,
-    /// The `tile_number` of the [`TrackTile`] currently laid on this hex, or
+    /// The `tile_number` of the [`Tile`] currently laid on this hex, or
     /// `0` when no track tile is placed here (`0` is not a valid tile number).
     pub placed_tile: u32,
-    pub connectivity: HashMap<String, u32>,
     pub market: HashMap<String, GridBox>,
+
+    pub track: [i32;6],
 }
 
 /// Each hex on the board has a color that indicates what type of
@@ -84,66 +85,124 @@ pub enum HexLabel {
     B,
 }
 
+pub enum Face {
+    NE = 0,
+    E = 1,
+    SE = 2,
+    SW = 3,
+    W = 4,
+    NW = 5,
+}
+
 impl MapTile {
     /// Cost to traverse from this tile to `dest`.
     ///
-    /// Track connections are recorded in `connectivity`, keyed by the
-    /// neighbor's `HexName` string, with the step cost as the value. Returns
-    /// `None` when the two tiles are not connected -- which the `a_star` cost
-    /// function treats as "no edge here". On the empty starting map no
-    /// connections exist, so every pair returns `None`.
-    ///
-    /// Connectivity is a pair-wise concept: a must have connectivity
-    /// to b and vice versa, otherwise the pair have no connectivity.
-    /// FIXME: have to check both connectivity directions.
+    /// - self and dest share a face; we can figure out which face by
+    ///   comparing their axial coordinates
+    /// - if both self and dest have track to that face, we have
+    ///   connectivity and return Some(0).
+    /// - otherwise you can't get there from here and we return None.
     ///
     pub fn route_cost(&self, dest: &MapTile) -> Option<u32> {
-        self.connectivity.get(&dest.hex_name.name).copied()
+
+        match self.faces(dest) {
+            Some((self_face, dest_face)) => {
+                if self.track[self_face as usize] == 1 &&
+                                    dest.track[dest_face as usize] == 1 {
+                    return Some(0);
+                }
+                return None;
+            }
+            _ => return None
+        }
+    }
+
+    pub fn faces(&self, dest: &MapTile) -> Option<(i32, i32)>
+    {
+        let cdiff = self.coordinate_diff(dest);
+
+        match cdiff {
+            (1,-1) => { return Some((Face::NE as i32, Face::SW as i32)) }
+            (1,0)  => { return Some((Face::E as i32,  Face::W as i32)) }
+            (0,1)  => { return Some((Face::SE as i32, Face::NW as i32)) }
+            (-1,1) => { return Some((Face::SW as i32, Face::NE as i32)) }
+            (-1,0) => { return Some((Face::W as i32,  Face::E as i32)) }
+            (0,-1) => { return Some((Face::NW as i32, Face::SE as i32)) }
+            _ => { return None }
+        }
+    }
+
+    pub fn coordinate_diff(&self, dest: &MapTile) -> (i32, i32)
+    {
+        (dest.coord.x - self.coord.x,
+         dest.coord.y - self.coord.y)
     }
 }
 
 /*
- * Components related to TrackTile:
+ * Components related to Tile:
  * - tile_number
- * - TrackColor
- * - TrackInventoryQuantity
- * - TrackRotation (Also referred to as "tile facings")
+ * - TileColor
+ * - TileInventoryQuantity
+ * - TileRotation (Also referred to as "tile facings")
  */
 
 #[derive(Component)]
-pub struct TrackTile {
+pub struct Tile {
     pub tile_number: u32,
 }
 
+/// For a particular tile, encodes whether each face has track to it.
+/// Encode as a 6-element array, where value 1 means yes there is track
+/// on that face, and 0 means no there is no track on that face.
+/// The faces are number clockwise from the NorthEast face (see also)
+/// the enum Face.
 #[derive(Component)]
-pub enum TrackColor {
+pub struct TileTrack {
+    pub track: [i32;6],
+}
+
+#[derive(Component)]
+pub enum TileColor {
     Yellow,
     Green,
     Orange,
 }
 
 #[derive(Component)]
-struct TrackRotation {
+struct TileRotation {
     rotation: u32,      // facing 3 means rotated twice.
 }
 
+/// Marker of placement data
+#[derive(Component)]
+pub struct TilePlacementData;
+
+/// Marker that a particular tile has a junction in its track
+#[derive(Component)]
+pub struct TileHasJunction;
+
+/// Marker that a particular tile has a crossover in its track
+#[derive(Component)]
+pub struct TileHasCrossover;
+
 /// How many copies of a given track tile remain available to be placed.
 ///
-/// Each TrackTile has its own current inventory, which determines
+/// Each Tile has its own current inventory, which determines
 /// whether a tile is by that number can be placed at this time.
 ///
 /// `quantity` drops by one each time the tile is laid on the map, and rises by
 /// one when a placed tile is lifted (i.e. replaced by an upgrade).
 #[derive(Component)]
-pub struct TrackInventoryQuantity {
+pub struct TileInventoryQuantity {
     pub quantity: u32,
 }
 
 /// Startup system that builds the initial track-tile inventory.
 ///
 /// For each distinct track tile in the 1830 set, this should:
-///   1. spawn one entity with `(TrackTile { tile_number },
-///      TrackInventoryQuantity { quantity })`, `quantity` being the starting
+///   1. spawn one entity with `(Tile { tile_number },
+///      TileInventoryQuantity { quantity })`, `quantity` being the starting
 ///      count for that tile, and
 ///   2. record it in `game_state.inventory_by_number`, keyed by `tile_number`,
 ///      so `place_tile` can look it up directly.
@@ -152,188 +211,188 @@ pub fn spawn_tracktile_inventory(
     mut game_state: ResMut<GameState>,
 ) {
     game_state.inventory_by_number.insert(1,
-        commands.spawn(( TrackTile { tile_number: 1 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 1 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(2,
-        commands.spawn(( TrackTile { tile_number: 2 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 2 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(3,
-        commands.spawn(( TrackTile { tile_number: 3 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 3 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(4,
-        commands.spawn(( TrackTile { tile_number: 4 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 4 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(7,
-        commands.spawn(( TrackTile { tile_number: 7 },
-                    TrackInventoryQuantity { quantity: 4 },
+        commands.spawn(( Tile { tile_number: 7 },
+                    TileInventoryQuantity { quantity: 4 },
         )).id() );
     game_state.inventory_by_number.insert(8,
-        commands.spawn(( TrackTile { tile_number: 8 },
-                    TrackInventoryQuantity { quantity: 8 },
+        commands.spawn(( Tile { tile_number: 8 },
+                    TileInventoryQuantity { quantity: 8 },
         )).id() );
     game_state.inventory_by_number.insert(9,
-        commands.spawn(( TrackTile { tile_number: 9 },
-                    TrackInventoryQuantity { quantity: 7 },
+        commands.spawn(( Tile { tile_number: 9 },
+                    TileInventoryQuantity { quantity: 7 },
         )).id() );
     game_state.inventory_by_number.insert(14,
-        commands.spawn(( TrackTile { tile_number: 14 },
-                    TrackInventoryQuantity { quantity: 3 },
+        commands.spawn(( Tile { tile_number: 14 },
+                    TileInventoryQuantity { quantity: 3 },
         )).id() );
     game_state.inventory_by_number.insert(15,
-        commands.spawn(( TrackTile { tile_number: 15 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 15 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(16,
-        commands.spawn(( TrackTile { tile_number: 16 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 16 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(18,
-        commands.spawn(( TrackTile { tile_number: 18 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 18 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(19,
-        commands.spawn(( TrackTile { tile_number: 19 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 19 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(20,
-        commands.spawn(( TrackTile { tile_number: 20 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 20 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(23,
-        commands.spawn(( TrackTile { tile_number: 23 },
-                    TrackInventoryQuantity { quantity: 3 },
+        commands.spawn(( Tile { tile_number: 23 },
+                    TileInventoryQuantity { quantity: 3 },
         )).id() );
     game_state.inventory_by_number.insert(24,
-        commands.spawn(( TrackTile { tile_number: 24 },
-                    TrackInventoryQuantity { quantity: 3 },
+        commands.spawn(( Tile { tile_number: 24 },
+                    TileInventoryQuantity { quantity: 3 },
         )).id() );
     game_state.inventory_by_number.insert(25,
-        commands.spawn(( TrackTile { tile_number: 25 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 25 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(26,
-        commands.spawn(( TrackTile { tile_number: 26 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 26 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(27,
-        commands.spawn(( TrackTile { tile_number: 27 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 27 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(28,
-        commands.spawn(( TrackTile { tile_number: 28 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 28 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(29,
-        commands.spawn(( TrackTile { tile_number: 29 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 29 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(39,
-        commands.spawn(( TrackTile { tile_number: 39 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 39 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(40,
-        commands.spawn(( TrackTile { tile_number: 40 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 40 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(41,
-        commands.spawn(( TrackTile { tile_number: 41 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 41 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(42,
-        commands.spawn(( TrackTile { tile_number: 42 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 42 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(43,
-        commands.spawn(( TrackTile { tile_number: 43 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 43 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(44,
-        commands.spawn(( TrackTile { tile_number: 44 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 44 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(45,
-        commands.spawn(( TrackTile { tile_number: 45 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 45 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(46,
-        commands.spawn(( TrackTile { tile_number: 46 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 46 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(47,
-        commands.spawn(( TrackTile { tile_number: 47 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 47 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(53,
-        commands.spawn(( TrackTile { tile_number: 53 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 53 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(54,
-        commands.spawn(( TrackTile { tile_number: 54 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 54 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(55,
-        commands.spawn(( TrackTile { tile_number: 55 },
-                    TrackInventoryQuantity { quantity: 1 },
-        )).id() );
-    game_state.inventory_by_number.insert(59,
-        commands.spawn(( TrackTile { tile_number: 59 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 55 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(56,
-        commands.spawn(( TrackTile { tile_number: 56 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 56 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(57,
-        commands.spawn(( TrackTile { tile_number: 57 },
-                    TrackInventoryQuantity { quantity: 4 },
+        commands.spawn(( Tile { tile_number: 57 },
+                    TileInventoryQuantity { quantity: 4 },
         )).id() );
     game_state.inventory_by_number.insert(58,
-        commands.spawn(( TrackTile { tile_number: 58 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 58 },
+                    TileInventoryQuantity { quantity: 2 },
+        )).id() );
+    game_state.inventory_by_number.insert(59,
+        commands.spawn(( Tile { tile_number: 59 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(61,
-        commands.spawn(( TrackTile { tile_number: 61 },
-                    TrackInventoryQuantity { quantity: 2 },
+        commands.spawn(( Tile { tile_number: 61 },
+                    TileInventoryQuantity { quantity: 2 },
         )).id() );
     game_state.inventory_by_number.insert(62,
-        commands.spawn(( TrackTile { tile_number: 62 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 62 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(63,
-        commands.spawn(( TrackTile { tile_number: 63 },
-                    TrackInventoryQuantity { quantity: 3 },
+        commands.spawn(( Tile { tile_number: 63 },
+                    TileInventoryQuantity { quantity: 3 },
         )).id() );
     game_state.inventory_by_number.insert(64,
-        commands.spawn(( TrackTile { tile_number: 64 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 64 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(65,
-        commands.spawn(( TrackTile { tile_number: 65 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 65 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(66,
-        commands.spawn(( TrackTile { tile_number: 66 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 66 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(67,
-        commands.spawn(( TrackTile { tile_number: 67 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 67 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(68,
-        commands.spawn(( TrackTile { tile_number: 68 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 68 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(69,
-        commands.spawn(( TrackTile { tile_number: 69 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 69 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.inventory_by_number.insert(70,
-        commands.spawn(( TrackTile { tile_number: 70 },
-                    TrackInventoryQuantity { quantity: 1 },
+        commands.spawn(( Tile { tile_number: 70 },
+                    TileInventoryQuantity { quantity: 1 },
         )).id() );
 }
 
@@ -367,6 +426,30 @@ impl HexSettings {
 
 info!("location of worldPos {},{} is {:?}", pos.x,pos.y,hex);
         hex
+    }
+}
+
+impl TileTrack
+{
+    pub fn rotate_tile_track(&self, rotation: i32) -> [i32;6] {
+        // the output position for each input position:
+        let o0 : usize = ( ( 0 as usize ) + rotation as usize ) % 6;
+        let o1 : usize = ( ( 1 as usize ) + rotation as usize ) % 6;
+        let o2 : usize = ( ( 2 as usize ) + rotation as usize ) % 6;
+        let o3 : usize = ( ( 3 as usize ) + rotation as usize ) % 6;
+        let o4 : usize = ( ( 4 as usize ) + rotation as usize ) % 6;
+        let o5 : usize = ( ( 5 as usize ) + rotation as usize ) % 6;
+
+        let mut result = [0;6];
+
+        result[o0] = self.track[0];
+        result[o1] = self.track[1];
+        result[o2] = self.track[2];
+        result[o3] = self.track[3];
+        result[o4] = self.track[4];
+        result[o5] = self.track[5];
+
+        result
     }
 }
 
@@ -410,203 +493,203 @@ pub fn spawn_routemap(
 
     let hexes = vec![
         (HexName::new("A9"),  Hex::new( 1, -5),  "A9", 
-            HexColor::Red),
+            HexColor::Red, [0,0,1,0,0,0]),
         (HexName::new("A11"), Hex::new( 2, -5), "A11", 
-            HexColor::Red),
+            HexColor::Red, [0,0,1,1,0,0]),
         (HexName::new("A17"), Hex::new( 5, -5), "A17", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,1,1,0,0]),
         (HexName::new("A19"), Hex::new( 6, -5), "A19", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,1,1,0,0]),
 
         (HexName::new("B10"), Hex::new( 1, -4), "blank_1large", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B12"), Hex::new( 2, -4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B14"), Hex::new( 3, -4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B16"), Hex::new( 4, -4), "blank_1large", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B18"), Hex::new( 5, -4), "B18", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B20"), Hex::new( 6, -4), "B20", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B22"), Hex::new( 7, -4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("B24"), Hex::new( 8, -4), "B24", 
-            HexColor::Red),
+            HexColor::Red, [0,0,0,1,1,0]),
 
         (HexName::new("C7"),  Hex::new(-1, -3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C9"),  Hex::new( 0, -3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C11"), Hex::new( 1, -3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C13"), Hex::new( 2, -3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C15"), Hex::new( 3, -3), "C15", 
-            HexColor::Gray),
+            HexColor::Gray, [1,0,0,0,1,0]),
         (HexName::new("C17"), Hex::new( 4, -3), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C19"), Hex::new( 5, -3), "C19", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C21"), Hex::new( 6, -3), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("C23"), Hex::new( 7, -3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
 
         (HexName::new("D2"),  Hex::new(-4, -2), "D2", 
-            HexColor::Gray),
+            HexColor::Gray, [0,1,1,0,0,0]),
         (HexName::new("D4"),  Hex::new(-3, -2), "blank_1small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D6"),  Hex::new(-2, -2), "D6", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D8"),  Hex::new(-1, -2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D10"), Hex::new( 0, -2), "D10", 
-            HexColor::Yellow),
+            HexColor::Yellow, [0;6]),
         (HexName::new("D12"), Hex::new( 1, -2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D14"), Hex::new( 2, -2), "D14", 
-            HexColor::Gray),
+            HexColor::Gray, [0,1,0,1,1,0]),
         (HexName::new("D16"), Hex::new( 3, -2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D18"), Hex::new( 4, -2), "D18", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D20"), Hex::new( 5, -2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D22"), Hex::new( 6, -2), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("D24"), Hex::new( 7, -2), "D24", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,0,1,1,0]),
 
         (HexName::new("E3"),  Hex::new(-4, -1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E5"),  Hex::new(-3, -1), "E5", 
-            HexColor::Yellow),
+            HexColor::Yellow, [0;6]),
         (HexName::new("E7"),  Hex::new(-2, -1), "blank_1small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E9"),  Hex::new(-1, -1), "E9", 
-            HexColor::Gray),
+            HexColor::Gray, [1,0,0,0,0,1]),
         (HexName::new("E11"), Hex::new( 0, -1), "E11", 
-            HexColor::Yellow),
+            HexColor::Yellow, [0;6]),
         (HexName::new("E13"), Hex::new( 1, -1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E15"), Hex::new( 2, -1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E17"), Hex::new( 3, -1), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E19"), Hex::new( 4, -1), "E19", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E21"), Hex::new( 5, -1), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("E23"), Hex::new( 6, -1), "E23", 
-            HexColor::Yellow),
+            HexColor::Yellow, [1,0,1,0,0,0]),
 
         (HexName::new("F2"),  Hex::new(-5,  0), "F2", 
-            HexColor::Red),
+            HexColor::Red, [1,1,1,0,0,0]),
         (HexName::new("F4"),  Hex::new(-4,  0), "F4", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F6"),  Hex::new(-3,  0), "F6", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,1,1,0,0]),
         (HexName::new("F8"),  Hex::new(-2,  0), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F10"), Hex::new(-1,  0), "blank_1small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F12"), Hex::new( 0,  0), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F14"), Hex::new( 1,  0), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F16"), Hex::new( 2,  0), "F16", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F18"), Hex::new( 3,  0), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F20"), Hex::new( 4,  0), "blank_2small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F22"), Hex::new( 5,  0), "F22", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("F24"), Hex::new( 6,  0), "F24", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,0,0,1,1]),
 
         (HexName::new("G3"),  Hex::new(-5,  1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G5"),  Hex::new(-4,  1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G7"),  Hex::new(-3,  1), "blank_2small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G9"),  Hex::new(-2,  1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G11"), Hex::new(-1,  1), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G13"), Hex::new( 0,  1), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G15"), Hex::new( 1,  1), "G15", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G17"), Hex::new( 2,  1), "blank_2small", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("G19"), Hex::new( 3,  1), "G19", 
-            HexColor::Yellow),
+            HexColor::Yellow, [1,0,0,1,0,0]),
 
         (HexName::new("H2"),  Hex::new(-6,  2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H4"),  Hex::new(-5,  2), "blank_1large", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H6"),  Hex::new(-4,  2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H8"),  Hex::new(-3,  2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H10"), Hex::new(-2,  2), "blank_1large", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H12"), Hex::new(-1,  2), "H12", 
-            HexColor::Gray),
+            HexColor::Gray, [0,1,0,0,1,0]),
         (HexName::new("H14"), Hex::new( 0,  2), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H16"), Hex::new( 1,  2), "blank_1large", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("H18"), Hex::new( 2,  2), "H18", 
-            HexColor::Yellow),
+            HexColor::Yellow, [0;6]),
 
         (HexName::new("I1"),  Hex::new(-7,  3), "blank", 
-            HexColor::Red),
+            HexColor::Red, [0,1,0,0,0,0]),
         (HexName::new("I3"),  Hex::new(-6,  3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I5"),  Hex::new(-5,  3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I7"),  Hex::new(-4,  3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I9"),  Hex::new(-3,  3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I11"), Hex::new(-2,  3), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I13"), Hex::new(-1,  3), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I15"), Hex::new( 0,  3), "I15", 
-            HexColor::Yellow),
+            HexColor::Yellow, [0,1,0,1,0,0]),
         (HexName::new("I17"), Hex::new( 1,  3), "I17", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("I19"), Hex::new( 2,  3), "I19", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,0,0,1,1]),
 
         (HexName::new("J2"),  Hex::new(-7,  4), "J2", 
-            HexColor::Red),
+            HexColor::Red, [1,1,0,0,0,0]),
         (HexName::new("J4"),  Hex::new(-6,  4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("J6"),  Hex::new(-5,  4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("J8"),  Hex::new(-4,  4), "blank", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("J10"), Hex::new(-3,  4), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("J12"), Hex::new(-2,  4), "blank_mountain", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
         (HexName::new("J14"), Hex::new(-1,  4), "J14", 
-            HexColor::Tan),
+            HexColor::Tan, [0;6]),
 
         (HexName::new("K13"), Hex::new(-2,  5), "K13", 
-            HexColor::Red),
+            HexColor::Red, [1,0,0,0,0,1]),
         (HexName::new("K15"), Hex::new(-1,  5), "K15", 
-            HexColor::Gray),
+            HexColor::Gray, [0,0,0,0,0,1]),
     ];
 
     // For each hex in our game map, a MapTile component holds
@@ -618,7 +701,7 @@ pub fn spawn_routemap(
     // a hex -- by coordinate or by name -- to its entity,
     // then read/mutate the `MapTile` through a query.
 
-    for (hex_name, coord, tile_name, hcolor) in hexes
+    for (hex_name, coord, tile_name, hcolor, tpattern) in hexes
     {
         let world_pos = settings.hex_to_world_pos(coord);
 
@@ -630,10 +713,10 @@ pub fn spawn_routemap(
                 coord,
                 hex_name: hex_name.clone(),
                 hex_color: hcolor,
-                connectivity: HashMap::new(),
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
                 placed_tile: 0, // 0 = no track tile placed yet
+                track: tpattern,
             },
         )).id();
 
@@ -702,14 +785,9 @@ info!("Is there a tile at {:?}", hex_coord);
     returns either "yes" or "no" when the algorithm asks us if a
     pair of hexes are connected.
    
-    At the start of the game, we set up the connectivity table for
-    each hex. Nearly all entries are "no connection" at this point.
-   
-    Each time a track tile is placed, we update the connectivity
-    table for that hex and for each of its 6 neighbors. Over time
-    the track starts to form connections and routes emerge. Note
-    that this computation is also where we ensure legal tile upgrades
-    as they must maintain existing connectivity.
+    Over time, the track starts to form connections and routes emerge.
+    Note that this computation is also where we ensure legal tile
+    upgrades as they must maintain existing connectivity.
    
     Some of the connectivity is dynamic, for example a station marker
     may restrict a route to only the railroad that placed that marker.
@@ -735,6 +813,287 @@ info!("Is there a tile at {:?}", hex_coord);
     available trains to compute the highest-revenue set, and that
     is used to pay dividends or add to the corporate treasury.
  */
+
+/// Startup system that builds the tile placement data
+///
+/// For each distinct tile in the 1830 set, this should:
+///
+///   1. spawn one entity with the tile_number and information
+///      that is needed when that tile is placed on a map hex.
+///      In particular this includes the tile's track, but also
+///      some other details such as whether the tile has a junction
+///      or crossover, etc.
+///      Note that these entities track the base (unrotate) track
+///      pattern. When an actual tile is placed on the map, the
+///      user's chosen rotation is applied to this base track
+///      pattern and the rotated result is stored in the MapTile track.
+///
+///   2. record it in `game_state.inventory_by_number`, keyed by `tile_number`,
+///      so `place_tile` can look it up directly.
+pub fn spawn_tile_placement_data(
+    mut commands: Commands,
+    mut game_state: ResMut<GameState>,
+) {
+    game_state.tile_placement_data_by_number.insert(1,
+        commands.spawn(( Tile { tile_number: 1 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(2,
+        commands.spawn(( Tile { tile_number: 2 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(3,
+        commands.spawn(( Tile { tile_number: 3 },
+                    TilePlacementData,
+                    TileTrack { track: [1,0,0,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(4,
+        commands.spawn(( Tile { tile_number: 4 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(7,
+        commands.spawn(( Tile { tile_number: 7 },
+                    TilePlacementData,
+                    TileTrack { track: [1,0,0,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(8,
+        commands.spawn(( Tile { tile_number: 8 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(9,
+        commands.spawn(( Tile { tile_number: 9 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(14,
+        commands.spawn(( Tile { tile_number: 14 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(15,
+        commands.spawn(( Tile { tile_number: 15 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(16,
+        commands.spawn(( Tile { tile_number: 16 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(18,
+        commands.spawn(( Tile { tile_number: 18 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(19,
+        commands.spawn(( Tile { tile_number: 19 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,1,0,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(20,
+        commands.spawn(( Tile { tile_number: 20 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(23,
+        commands.spawn(( Tile { tile_number: 23 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,1,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(24,
+        commands.spawn(( Tile { tile_number: 24 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(25,
+        commands.spawn(( Tile { tile_number: 25 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,1,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(26,
+        commands.spawn(( Tile { tile_number: 26 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,0,1,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(27,
+        commands.spawn(( Tile { tile_number: 27 },
+                    TilePlacementData,
+                    TileTrack { track: [1,0,1,0,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(28,
+        commands.spawn(( Tile { tile_number: 28 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,0,1,1,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(29,
+        commands.spawn(( Tile { tile_number: 29 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,0,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(39,
+        commands.spawn(( Tile { tile_number: 39 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,0,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(40,
+        commands.spawn(( Tile { tile_number: 40 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,1,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(41,
+        commands.spawn(( Tile { tile_number: 41 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,1,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(42,
+        commands.spawn(( Tile { tile_number: 42 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,0,1] },
+                    TileHasJunction,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(43,
+        commands.spawn(( Tile { tile_number: 43 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+                    TileHasJunction,
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(44,
+        commands.spawn(( Tile { tile_number: 44 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+                    TileHasJunction,
+                    TileInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(45,
+        commands.spawn(( Tile { tile_number: 45 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,1,0,1] },
+                    TileHasJunction,
+                    TileInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(46,
+        commands.spawn(( Tile { tile_number: 46 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,1,0,1] },
+                    TileHasJunction,
+                    TileInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(47,
+        commands.spawn(( Tile { tile_number: 47 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+                    TileHasJunction,
+                    TileInventoryQuantity { quantity: 1 },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(53,
+        commands.spawn(( Tile { tile_number: 53 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,1,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(54,
+        commands.spawn(( Tile { tile_number: 54 },
+                    TilePlacementData,
+                    TileTrack { track: [1,0,0,1,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(55,
+        commands.spawn(( Tile { tile_number: 55 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(56,
+        commands.spawn(( Tile { tile_number: 56 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(57,
+        commands.spawn(( Tile { tile_number: 57 },
+                    TilePlacementData,
+                    TileTrack { track: [0,0,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(58,
+        commands.spawn(( Tile { tile_number: 58 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(59,
+        commands.spawn(( Tile { tile_number: 59 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(61,
+        commands.spawn(( Tile { tile_number: 61 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,1,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(62,
+        commands.spawn(( Tile { tile_number: 62 },
+                    TilePlacementData,
+                    TileTrack { track: [1,0,0,1,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(63,
+        commands.spawn(( Tile { tile_number: 63 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,1,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(64,
+        commands.spawn(( Tile { tile_number: 64 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,1,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(65,
+        commands.spawn(( Tile { tile_number: 65 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,0,1,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(66,
+        commands.spawn(( Tile { tile_number: 66 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(67,
+        commands.spawn(( Tile { tile_number: 67 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,1,0,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(68,
+        commands.spawn(( Tile { tile_number: 68 },
+                    TilePlacementData,
+                    TileTrack { track: [0,1,1,0,1,1] },
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(69,
+        commands.spawn(( Tile { tile_number: 69 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,0,1,0,1] },
+                    TileHasCrossover,
+        )).id() );
+    game_state.tile_placement_data_by_number.insert(70,
+        commands.spawn(( Tile { tile_number: 70 },
+                    TilePlacementData,
+                    TileTrack { track: [1,1,1,0,0,1] },
+                    TileHasJunction,
+                    TileHasCrossover,
+        )).id() );
+}
 
 /// System to perform some simple routefinding tests on the empty
 /// map present at startup. Since this leaves the game map modified,

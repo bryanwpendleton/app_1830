@@ -10,7 +10,11 @@ use hexx::Hex;
 
 use crate::routemap::MapTile;
 use crate::routemap::HexName;
-use crate::routemap::TrackInventoryQuantity;
+use crate::routemap::TileInventoryQuantity;
+use crate::routemap::TilePlacementData;
+use crate::routemap::TileTrack;
+use crate::routemap::TileHasCrossover;
+use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
 
@@ -156,9 +160,11 @@ pub struct GameState {
     pub tile_by_name: HashMap<String, Entity>,
 
     // Index into the track-tile inventory, keyed by `tile_number`.
-    // Each entry's entity is a `TrackInventoryQuantity` recording
+    // Each entry's entity is a `TileInventoryQuantity` recording
     // how many copies of that tile are available to be placed.
     pub inventory_by_number: HashMap<u32, Entity>,
+
+    pub tile_placement_data_by_number: HashMap<u32, Entity>,
 
     pub tile_string : String,
 }
@@ -182,6 +188,7 @@ impl GameState {
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
             inventory_by_number: HashMap::new(),
+            tile_placement_data_by_number: HashMap::new(),
             tile_string: String::new(),
         }
     }
@@ -355,7 +362,8 @@ pub fn advance_game_phase(
 pub fn place_tile(
     mut game_state: ResMut<GameState>,
     mut hexes: Query<(&mut Sprite, &mut MapTile)>,
-    mut inventory: Query<&mut TrackInventoryQuantity>,
+    mut inventory: Query<&mut TileInventoryQuantity>,
+    placement: Query<(&TilePlacementData,&TileTrack)>,
     asset_server: Res<AssetServer>,
 ) {
     if game_state.tile_string.is_empty()
@@ -374,13 +382,17 @@ pub fn place_tile(
     // Always consume the request, whether or not it turns out to be valid.
     game_state.tile_string.clear();
 
-    if v.len() != 3 {
-        info!("Malformed tile request, expected hex_name:image:tile_number");
+    if v.len() != 4 {
+        info!("Malformed tile request, expected hex_name:image:tile_number:rotation");
         return;
     }
     let (hex_name, image_path) = (&v[0], &v[1]);
     let Ok(new_number) = v[2].parse::<u32>() else {
         info!("Bad tile_number in tile request: {}", v[2]);
+        return;
+    };
+    let Ok(rotation) = v[3].parse::<i32>() else {
+        info!("Bad rotation in tile request: {}", v[3]);
         return;
     };
 
@@ -390,6 +402,11 @@ pub fn place_tile(
         return;
     };
     let Some(&new_inv_entity) = game_state.inventory_by_number.get(&new_number) else {
+        info!("No inventory for tile number {}", new_number);
+        return;
+    };
+    let Some(&placement_entity) =
+                    game_state.tile_placement_data_by_number.get(&new_number) else {
         info!("No inventory for tile number {}", new_number);
         return;
     };
@@ -427,12 +444,23 @@ pub fn place_tile(
         }
     }
 
+// FIXME -- there are other placement rules to enforce
+
     // Rule 3: take the new tile from inventory and place it.
     if let Ok(mut new_q) = inventory.get_mut(new_inv_entity) {
         new_q.quantity -= 1;
         info!("Took tile {} from inventory ({} remaining)",
             new_number, new_q.quantity);
     }
+
+    // placement data with track pattern and other placement details:
+    if let Ok(tile_data) = placement.get(placement_entity)  {
+        info!("loaded placement data for tile number {}", new_number);
+        map_tile.track = tile_data.1.rotate_tile_track(rotation);
+    } else {
+        info!("Unable to find placement data for tile number {}", new_number);
+        return;
+    };
 
     map_tile.placed_tile = new_number;
     sprite.image = asset_server.load(image_path.clone());
