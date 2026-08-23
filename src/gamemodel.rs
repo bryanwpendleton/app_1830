@@ -400,17 +400,6 @@ pub fn place_tile_impl(
         return;
     }
 
-    info!("inventory_by_number has {} entities",  
-            game_state.inventory_by_number.len());
-    for inv in &mut *inventory {
-        info!("TileInventoryQuantity: {} ", inv.quantity);
-    }
-    for (k,v) in &game_state.inventory_by_number {
-        info!("inventory_by_number: {} => {}", k,v);
-    }
-    info!("quantity of tile 57 is {:?}", 
-            game_state.inventory_by_number.get(&57) );
-
     info!("You asked to place a tile : {}", game_state.tile_string);
 
     let v: Vec<String> = game_state
@@ -441,15 +430,13 @@ pub fn place_tile_impl(
         info!("No tile named {}", hex_name);
         return;
     };
-    info!("quantity of tile 57 is {:?}", 
-            game_state.inventory_by_number.get(&57) );
     let Some(&new_inv_entity) = game_state.inventory_by_number.get(&new_number) else {
         info!("No inventory for tile number {}", new_number);
         return;
     };
     let Some(&placement_entity) =
                     game_state.tile_placement_data_by_number.get(&new_number) else {
-        info!("No inventory for tile number {}", new_number);
+        info!("No placement data for tile number {}", new_number);
         return;
     };
 

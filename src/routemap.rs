@@ -1156,4 +1156,9 @@ pub fn do_simple_routefinding_tests(
         &asset_server,
     );
 
+/*
+    let path_with_tile = a_star(start, end, cost);
+
+    info!("With tile on B10, path from A9 to B10 is: {:?}", path_with_tile);
+*/
 }
