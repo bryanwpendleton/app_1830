@@ -1098,21 +1098,13 @@ pub fn spawn_tile_placement_data(
                     TileHasCrossover,
         )).id() );
 }
-
-/// System to perform some simple routefinding tests on the empty
-/// map present at startup. Since this leaves the game map modified,
-/// it will be removed once the routefinding module is stabilized.
-pub fn do_simple_routefinding_tests(
-    mut game_state: ResMut<GameState>,
-    mut hexes: Query<(&mut Sprite, &mut MapTile)>,
-    mut inventory: Query<&mut TileInventoryQuantity>,
-    placement: Query<(&TilePlacementData,&TileTrack)>,
-    asset_server: Res<AssetServer>,
-) {
-    // On an empty map, there should be no path from A9 to B10.
-    let start = Hex::new(1, -5);  // A9
-    let end = Hex::new(1, -4);    // B10
-
+pub fn find_path(
+    game_state: &mut GameState,
+    hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
+    start: &Hex,
+    end: &Hex,
+) -> Option<Vec<Hex>>
+{
     // The a_star cost function receives raw hex coordinates.
     // We resolve each to its tile entity through the GameState
     // indices, read the `MapTile` components via the query,
@@ -1139,7 +1131,25 @@ pub fn do_simple_routefinding_tests(
         start_hex.1.route_cost(end_hex.1)
     };
 
-    let path = a_star(start, end, cost);
+    a_star(*start, *end, cost)
+}
+
+/// System to perform some simple routefinding tests on the empty
+/// map present at startup. Since this leaves the game map modified,
+/// it will be removed once the routefinding module is stabilized.
+pub fn do_simple_routefinding_tests(
+    mut game_state: ResMut<GameState>,
+    mut hexes: Query<(&mut Sprite, &mut MapTile)>,
+    mut inventory: Query<&mut TileInventoryQuantity>,
+    placement: Query<(&TilePlacementData,&TileTrack)>,
+    asset_server: Res<AssetServer>,
+) {
+    // On an empty map, there should be no path from A9 to B10.
+    let A9 = Hex::new(1, -5);
+    let B10 = Hex::new(1, -4);
+    let D14 = Hex::new(2, -2);
+
+    let path = find_path( &mut game_state, &mut hexes, &A9, &B10);
 
     info!("Empty map path from A9 to B10 is: {:?}", path);
 
@@ -1156,9 +1166,11 @@ pub fn do_simple_routefinding_tests(
         &asset_server,
     );
 
-/*
-    let path_with_tile = a_star(start, end, cost);
+    let path_with_tile = find_path( &mut game_state, &mut hexes, &A9, &B10);
 
     info!("With tile on B10, path from A9 to B10 is: {:?}", path_with_tile);
-*/
+
+    let incomplete_path = find_path( &mut game_state, &mut hexes, &A9, &D14);
+
+    info!("Can we get from A9 to D14 (no): {:?}", incomplete_path);
 }
