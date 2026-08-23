@@ -366,10 +366,50 @@ pub fn place_tile(
     placement: Query<(&TilePlacementData,&TileTrack)>,
     asset_server: Res<AssetServer>,
 ) {
+    // Thin system wrapper: unwrap the system params to plain references and
+    // defer to `place_tile_impl`, which holds the actual placement logic so it
+    // can be driven directly from tests
+
+    place_tile_impl(
+        &mut game_state,
+        &mut hexes,
+        &mut inventory,
+        &placement,
+        &asset_server,
+    );
+}
+
+/// The body of the [`place_tile`] system, factored out so it can be called
+/// outside a running schedule -- e.g. from internal tests that build the
+/// queries via a `SystemState` over a hand-constructed `World`.
+///
+/// The parameters mirror the system's, but as plain (mutable) references:
+/// `ResMut`/`Res`/`Query` all deref to these, so the system wrapper just passes
+/// them through.
+///
+/// See [`place_tile`] for the request format and placement rules.
+pub fn place_tile_impl(
+    game_state: &mut GameState,
+    hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
+    inventory: &mut Query<&mut TileInventoryQuantity>,
+    placement: &Query<(&TilePlacementData, &TileTrack)>,
+    asset_server: &AssetServer,
+) {
     if game_state.tile_string.is_empty()
     {
         return;
     }
+
+    info!("inventory_by_number has {} entities",  
+            game_state.inventory_by_number.len());
+    for inv in &mut *inventory {
+        info!("TileInventoryQuantity: {} ", inv.quantity);
+    }
+    for (k,v) in &game_state.inventory_by_number {
+        info!("inventory_by_number: {} => {}", k,v);
+    }
+    info!("quantity of tile 57 is {:?}", 
+            game_state.inventory_by_number.get(&57) );
 
     info!("You asked to place a tile : {}", game_state.tile_string);
 
@@ -401,6 +441,8 @@ pub fn place_tile(
         info!("No tile named {}", hex_name);
         return;
     };
+    info!("quantity of tile 57 is {:?}", 
+            game_state.inventory_by_number.get(&57) );
     let Some(&new_inv_entity) = game_state.inventory_by_number.get(&new_number) else {
         info!("No inventory for tile number {}", new_number);
         return;

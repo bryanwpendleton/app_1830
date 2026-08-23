@@ -9,6 +9,7 @@ use hexx::algorithms::a_star;
 
 use crate::stockmarket::GridBox;
 use crate::gamemodel::GameState;
+use crate::gamemodel::place_tile_impl;
 
 /*
     The routemap supports the Operating Round(s) of 1830.
@@ -394,6 +395,9 @@ pub fn spawn_tracktile_inventory(
         commands.spawn(( Tile { tile_number: 70 },
                     TileInventoryQuantity { quantity: 1 },
         )).id() );
+
+    info!("loaded inventory_by_number with {} entities", 
+            game_state.inventory_by_number.len());
 }
 
 #[derive(Resource)]
@@ -1099,8 +1103,11 @@ pub fn spawn_tile_placement_data(
 /// map present at startup. Since this leaves the game map modified,
 /// it will be removed once the routefinding module is stabilized.
 pub fn do_simple_routefinding_tests(
-    game_state: Res<GameState>,
-    tile_query: Query<&MapTile>,
+    mut game_state: ResMut<GameState>,
+    mut hexes: Query<(&mut Sprite, &mut MapTile)>,
+    mut inventory: Query<&mut TileInventoryQuantity>,
+    placement: Query<(&TilePlacementData,&TileTrack)>,
+    asset_server: Res<AssetServer>,
 ) {
     // On an empty map, there should be no path from A9 to B10.
     let start = Hex::new(1, -5);  // A9
@@ -1126,13 +1133,27 @@ pub fn do_simple_routefinding_tests(
         }
         let start_entity = *game_state.tile_by_coord.get(&a)?;
         let end_entity = *game_state.tile_by_coord.get(&b)?;
-        let start_tile = tile_query.get(start_entity).ok()?;
-        let end_tile = tile_query.get(end_entity).ok()?;
+        let start_hex = hexes.get(start_entity).ok()?;
+        let end_hex = hexes.get(end_entity).ok()?;
 
-        start_tile.route_cost(end_tile)
+        start_hex.1.route_cost(end_hex.1)
     };
 
     let path = a_star(start, end, cost);
 
     info!("Empty map path from A9 to B10 is: {:?}", path);
+
+    // Placing a tile on B10 should now allow a_star to find a path
+    // from A9 to B10
+
+    game_state.tile_string = String::from("B10:yellow/T57_base.png:57:0");
+
+    place_tile_impl(
+        &mut game_state,
+        &mut hexes,
+        &mut inventory,
+        &placement,
+        &asset_server,
+    );
+
 }
