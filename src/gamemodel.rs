@@ -484,7 +484,7 @@ pub fn place_tile_impl(
 
     // placement data with track pattern and other placement details:
     if let Ok(tile_data) = placement.get(placement_entity)  {
-        info!("loaded placement data for tile number {}", new_number);
+        // info!("loaded placement data for tile number {}", new_number);
         map_tile.track = tile_data.1.rotate_tile_track(rotation);
     } else {
         info!("Unable to find placement data for tile number {}", new_number);

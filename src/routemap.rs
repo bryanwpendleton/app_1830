@@ -1147,7 +1147,11 @@ pub fn do_simple_routefinding_tests(
     // On an empty map, there should be no path from A9 to B10.
     let A9 = Hex::new(1, -5);
     let B10 = Hex::new(1, -4);
+    let C15 = Hex::new(3, -3);
+    let D10 = Hex::new(0, -2);
     let D14 = Hex::new(2, -2);
+    let E9 = Hex::new(1, -1);
+    let E11 = Hex::new(0, -1);
 
     let path = find_path( &mut game_state, &mut hexes, &A9, &B10);
 
@@ -1158,12 +1162,8 @@ pub fn do_simple_routefinding_tests(
 
     game_state.tile_string = String::from("B10:yellow/T57_base.png:57:0");
 
-    place_tile_impl(
-        &mut game_state,
-        &mut hexes,
-        &mut inventory,
-        &placement,
-        &asset_server,
+    place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
+        &placement, &asset_server,
     );
 
     let path_with_tile = find_path( &mut game_state, &mut hexes, &A9, &B10);
@@ -1173,4 +1173,71 @@ pub fn do_simple_routefinding_tests(
     let incomplete_path = find_path( &mut game_state, &mut hexes, &A9, &D14);
 
     info!("Can we get from A9 to D14 (no): {:?}", incomplete_path);
+
+    // Now let's lay/upgrade tile all the way from B10 to D14:
+    // B10 => C9 => D10 => D12.
+    // Then we'll see what paths we find.
+
+    game_state.tile_string = String::from("B10:green/T14_f2.png:14:1");
+
+    place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
+        &placement, &asset_server,
+    );
+
+    game_state.tile_string = String::from("C9:yellow/T8_f2.png:8:1");
+
+    place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
+        &placement, &asset_server,
+    );
+
+    game_state.tile_string = String::from("D10:orange/T65_base.png:65:0");
+
+    place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
+        &placement, &asset_server,
+    );
+
+    game_state.tile_string = String::from("D12:yellow/T9_f3.png:9:2");
+
+    place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
+        &placement, &asset_server,
+    );
+
+    // We should have valid paths from A9 to: B10, D10, D14, and E9 but NOT
+    // to E11 or C15.
+    //
+    // The paths to E9 are incorrect because the current algorithm doesn't
+    // understand the intricacies of tile 65, but that's not a problem
+    // with the a_star costing, that's a problem with the 1830-specific
+    // special cases.
+    //
+    // And it shouldn't matter whether we start at A9 or at D14, we
+    // should see the same paths in either direction.
+
+    info!("Path from A9 to B10: {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &B10));
+    info!("Path from A9 to D10: {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &D10));
+    info!("Path from A9 to D14: {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &D14));
+    info!("Path from A9 to E9: {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &E9));
+
+    info!("Path from A9 to E11 (expect None): {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &E11));
+    info!("Path from A9 to C15 (expect None): {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &C15));
+
+    info!("Path from D14 to D10: {:?}",
+            find_path( &mut game_state, &mut hexes, &D14, &D10));
+    info!("Path from D14 to B10: {:?}",
+            find_path( &mut game_state, &mut hexes, &D14, &B10));
+    info!("Path from D14 to E9: {:?}",
+            find_path( &mut game_state, &mut hexes, &D14, &E9));
+    info!("Path from D14 to A9: {:?}",
+            find_path( &mut game_state, &mut hexes, &D14, &A9));
+
+    info!("Path from D14 to E11 (expect None): {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &E11));
+    info!("Path from D14 to C15 (expect None): {:?}",
+            find_path( &mut game_state, &mut hexes, &A9, &C15));
 }
