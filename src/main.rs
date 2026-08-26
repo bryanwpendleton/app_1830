@@ -4,6 +4,7 @@ use bevy_egui::EguiPlugin;
 mod gamemodel;
 mod routemap;
 mod stockmarket;
+mod privco;
 
 use bevy::window::{Monitor, PrimaryMonitor};
 
