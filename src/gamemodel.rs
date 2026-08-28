@@ -17,6 +17,7 @@ use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
+use crate::privco::PlayerBid;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -34,9 +35,9 @@ use crate::stockmarket::StockMarketCell;
 // - private companies (usually closed by end of game)
 
 pub struct PlayerAssets {
-    personal_money: u32,
-    corporations: [u32;8], // Indexed by Corporation enum
-    private_companies: [u32;6], // Indexed by PrivateCompany enum
+    pub personal_money: u32,
+    pub corporations: [u32;8], // Indexed by Corporation enum
+    pub private_companies: [u32;6], // Indexed by PrivateCompany enum
 }
 
 /// Marks an entity as a player in the game
@@ -149,6 +150,7 @@ pub struct GameState {
 
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
+    pub auction_bids: Vec<PlayerBid>,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -185,6 +187,7 @@ impl GameState {
                 passes: 0,
                 last_buy_sell: 0,
             },
+            auction_bids: Vec::new(),
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
             inventory_by_number: HashMap::new(),
@@ -617,6 +620,8 @@ pub fn create_players(commands: &mut Commands,
 pub fn setup_dummy_players(mut commands: Commands,
                     mut game_state: ResMut<GameState>)
 {
+    info!("Perhaps we don't need this anymore?");
+
     create_players( &mut commands,
             &mut game_state,
             vec!["Bryan".into(), "Dan".into(), "Tay".into()]);
