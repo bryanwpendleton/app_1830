@@ -642,7 +642,7 @@ impl Plugin for Game1830Plugin {
             .init_state::<RoundState>()
 
             // Setup systems run once at startup
-            .add_systems(Startup, (setup_game, setup_dummy_players).chain())
+            .add_systems(Startup, setup_game)
 
             // Start-of-round actions: run once on each transition into the
             // corresponding round, via the OnEnter schedules.

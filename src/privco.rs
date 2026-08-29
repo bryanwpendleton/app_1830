@@ -122,8 +122,10 @@ pub fn raise_bid_impl(
 
     for mut bid in game_state.auction_bids.iter_mut()
     {
-        if bid.order == player_id
+        if bid.order == player_id && bid.private_company == pc
         {
+            info!("You are bidding {} on {}, existing bid is {}",
+                        amount, pc as usize, bid.bid_amount);
             let increase = amount - bid.bid_amount;
             bid.bid_amount = amount;
 
@@ -198,8 +200,9 @@ pub fn resolve_pass_impl(
 pub fn do_simple_auction_tests(
     mut commands: Commands,
     mut game_state: ResMut<GameState>,
-    mut players: &mut Query<&mut Player>,
-) {   
+    mut players: Query<&mut Player>,
+) {
+    info!("do_simple_auction_tests");
 
     // Gerald has the priority at the start of a 4 player game
     // with Dave, Bruce, and Alex to his left in that order.
@@ -208,6 +211,12 @@ pub fn do_simple_auction_tests(
             &mut game_state,
             vec!["Gerald".into(), "Dave".into(),
                 "Bruce".into(), "Alex".into()]);
+
+    for player in players.iter()
+    {
+        info!("Player {} (id:{}) starts with money {}",
+            player.name, player.order, player.assets.personal_money);
+    }
 
     // Gerald places a bid of $165 on the CA. Dave bids $225 for the
     // BO, Bruce bids $75 for the DH, and Alex bids $170 for the CA. 
@@ -289,4 +298,15 @@ pub fn do_simple_auction_tests(
     // - Dave: $355, BO, SV, Priority Deal card, B&O President’s certificate
     // - Bruce: $505, DH,
     // - Alex: $348, CA, CL, 1 PRR share
+
+    for player in players.iter()
+    {
+        info!("Player {} (id:{}) ends with money {}",
+            player.name, player.order, player.assets.personal_money);
+        info!("   private_companies owned: {:?}",
+            player.assets.private_companies);
+        info!("   railroad certificates owned: {:?}",
+            player.assets.corporations);
+    }
+
 }
