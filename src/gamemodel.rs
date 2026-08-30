@@ -113,6 +113,8 @@ pub enum PrivateCompany {
     MohawkAndHudson = 3,
     CamdenAndAmboy = 4,
     BaltimoreAndOhio = 5,
+
+    UnknownPrivateCompany = 254,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -137,6 +139,20 @@ pub enum Corporation {
     BostonAndMaine = 7,
 }
 
+// CurrentPCAuction holds the state for resolving an auction for
+// a PrivateCompany:
+//
+// If all of the bidders pass consecutively, the auction ends and
+// the high bidder buys the private company using the money
+// he originally bid and additional money if necessary
+pub struct CurrentPCAuction
+{
+    pub pc: PrivateCompany,
+    pub num_bidders: u32,
+    pub num_passes: u32,
+    pub current_bidder: u32,
+}
+
 // ============================================================================
 // RESOURCES - Global game state
 // ============================================================================
@@ -150,7 +166,9 @@ pub struct GameState {
 
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
+
     pub auction_bids: Vec<PlayerBid>,
+    pub auction_state: CurrentPCAuction,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -187,7 +205,15 @@ impl GameState {
                 passes: 0,
                 last_buy_sell: 0,
             },
+
             auction_bids: Vec::new(),
+            auction_state: CurrentPCAuction {
+                pc: PrivateCompany::UnknownPrivateCompany,
+                num_bidders: 0,
+                num_passes: 0,
+                current_bidder: 0
+            },
+
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
             inventory_by_number: HashMap::new(),

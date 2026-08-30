@@ -124,8 +124,9 @@ pub fn raise_bid_impl(
     {
         if bid.order == player_id && bid.private_company == pc
         {
-            info!("You are bidding {} on {}, existing bid is {}",
-                        amount, pc as usize, bid.bid_amount);
+            // info!("You are bidding {} on {}, existing bid is {}",
+            //             amount, pc as usize, bid.bid_amount);
+
             let increase = amount - bid.bid_amount;
             bid.bid_amount = amount;
 
@@ -136,18 +137,12 @@ pub fn raise_bid_impl(
                     player.assets.personal_money -= increase;
                 }
             }
-            info!("Adjusted existing bid to {}, an increase of {}",
-                amount, increase);
+            // info!("Adjusted existing bid to {}, an increase of {}",
+            //     amount, increase);
         }
     }
+    game_state.auction_state.num_passes = 0;
 
-    game_state.auction_bids.push(
-        PlayerBid {
-            order: player_id,
-            private_company: pc,
-            bid_amount: amount,
-        }
-    );
 }
 
 // Pay face value to buy the unsold private company that has
@@ -168,6 +163,9 @@ pub fn buy_pc_impl(
         {
             player.assets.personal_money -= amount;
             player.assets.private_companies[pc as usize] = 1;
+
+            info!("Player {} buys private company {:?} for {}, money now {}",
+                player_id, pc, amount, player.assets.personal_money);
         }
         if player.order == (player_id + 1) % game_state.num_players
         {
@@ -185,13 +183,124 @@ pub fn auction_pass_impl(
     info!("Auction pass not implemented yet:");
 }
 
+// This code assumes there was at least one such bid, and returns
+// the player_id of the winning bid and the bid index in the
+// master array of bids.
+
+pub fn highest_bid_for_pc(game_state: &GameState, pc: &PrivateCompany)
+        -> (u32,usize)
+{
+
+    let mut who_won: u32 = 0;
+    let mut which_bid: usize = 0;
+    let mut result: u32 = 0;
+
+    let mut index : usize = 0;
+    while index < game_state.auction_bids.len()
+    {
+        if game_state.auction_bids[index].private_company == *pc &&
+            game_state.auction_bids[index].bid_amount > result
+        {
+            result = game_state.auction_bids[index].bid_amount;
+            who_won = game_state.auction_bids[index].order;
+            which_bid = index;
+        }
+        index = index + 1;
+    }
+    info!("Player {} won the final auction", who_won);
+
+    (who_won, which_bid)
+}
+
+// If the unsold private company with the lowest face value has at least
+// one bid on it, the buy-bid-turn sequence is paused. If only one
+// player has a bid on the private company, that player buys it
+// for the amount of the bid. If multiple players have bid on the
+// private company, an auction is held.
+
+pub fn resolve_pc_bids(
+    commands: &mut Commands,
+    game_state: &mut GameState,
+    pc: PrivateCompany,
+    bidders: u32,
+    lowest_bidder: u32,
+) {
+    info!("Finalize auction for {:?}", pc);
+
+    game_state.auction_state.pc = pc;
+    game_state.auction_state.num_bidders = bidders;
+    game_state.auction_state.num_passes = 0;
+    game_state.auction_state.current_bidder = lowest_bidder;
+}
+
 pub fn resolve_pass_impl(
     commands: &mut Commands,
     game_state: &mut GameState,
     players: &mut Query<&mut Player>,
     player_id: u32,
 ) {
-    info!("Resolve pass not implemented yet:");
+    info!("Resolve pass");
+
+    // Once all the bidders have passed consecutively, the auction ends:
+    // - the high bidder buys the private company for the cost of their bid
+    // - the other bids on the private company are terminated and the
+    //   bid money returns to those players
+
+    let pc = game_state.auction_state.pc;
+
+    game_state.auction_state.num_passes += 1;
+
+    info!("For PC {:?} there are {} bidders and there have been {} passes",
+            game_state.auction_state.pc,
+            game_state.auction_state.num_bidders,
+            game_state.auction_state.num_passes);
+
+    if game_state.auction_state.num_passes ==
+       game_state.auction_state.num_bidders
+    {
+        let (who_won,which_bid) = highest_bid_for_pc(&game_state, &pc);
+        
+        for mut player in players.iter_mut()
+        {
+            if player.order == who_won
+            {
+                player.assets.private_companies[
+                        game_state.auction_state.pc as usize] = 1;
+                game_state.auction_bids.remove(which_bid);
+            }
+        }
+
+        let mut i_rev = game_state.auction_bids.len() - 1;
+        while i_rev > 0
+        {
+            if game_state.auction_bids[i_rev].private_company == pc
+            {
+                let amt = game_state.auction_bids[i_rev].bid_amount;
+                
+                for mut player in players.iter_mut()
+                {
+                    if player.order == game_state.auction_bids[i_rev].order
+                    {
+                        player.assets.personal_money += amt;
+                    }
+                }
+                game_state.auction_bids.remove(i_rev);
+            }
+            if i_rev > 0
+            {
+                i_rev -= 1;
+            }
+        }
+    }
+}
+
+pub fn create_auction_test_players(mut commands: Commands,
+                    mut game_state: ResMut<GameState>)
+{
+    create_players( &mut commands,
+            &mut game_state,
+            vec!["Gerald".into(), "Dave".into(),
+                "Bruce".into(), "Alex".into()]);
 }
 
 /// System to perform a simple private company auction test at startup.
@@ -206,11 +315,6 @@ pub fn do_simple_auction_tests(
 
     // Gerald has the priority at the start of a 4 player game
     // with Dave, Bruce, and Alex to his left in that order.
-
-    create_players( &mut commands,
-            &mut game_state,
-            vec!["Gerald".into(), "Dave".into(),
-                "Bruce".into(), "Alex".into()]);
 
     for player in players.iter()
     {
@@ -252,6 +356,10 @@ pub fn do_simple_auction_tests(
     // on the DH can be resolved.  Bruce’s original bid of $75
     // is the lowest, so he bids first. He bids $85. 
 
+    resolve_pc_bids( &mut commands, &mut game_state,
+                    PrivateCompany::DelawareAndHudson,
+                    2, 2);
+
     raise_bid_impl(&mut commands, &mut game_state, &mut players,
                     2, PrivateCompany::DelawareAndHudson, 85);
 
@@ -266,6 +374,7 @@ pub fn do_simple_auction_tests(
     // Bruce pays his $95 to the bank and takes the DH certificate.
 
     resolve_pass_impl(&mut commands, &mut game_state, &mut players, 0);
+    resolve_pass_impl(&mut commands, &mut game_state, &mut players, 2);
 
     // Since Alex was the last player to bid-buy, Gerald is
     // the next to bid-buy. He buys the MH for $110 and the
@@ -279,6 +388,11 @@ pub fn do_simple_auction_tests(
     // Alex bids $212. Gerald counts his money and passes. Alex pays
     // his $212 and takes the CA and the free PRR certifiate
     // that goes with it—a bargain.
+
+    resolve_pc_bids( &mut commands, &mut game_state,
+                    PrivateCompany::CamdenAndAmboy,
+                    2, 0);
+
     raise_bid_impl(&mut commands, &mut game_state, &mut players,
                     0, PrivateCompany::CamdenAndAmboy, 175);
     raise_bid_impl(&mut commands, &mut game_state, &mut players,
@@ -289,6 +403,7 @@ pub fn do_simple_auction_tests(
                     3, PrivateCompany::CamdenAndAmboy, 212);
 
     resolve_pass_impl(&mut commands, &mut game_state, &mut players, 0);
+    resolve_pass_impl(&mut commands, &mut game_state, &mut players, 3);
 
     // There is only one bid on the BO, so Dave pays his $225
     // and takes the BO. 
@@ -299,6 +414,13 @@ pub fn do_simple_auction_tests(
     // - Bruce: $505, DH,
     // - Alex: $348, CA, CL, 1 PRR share
 
+    // all the bids should have been resolved
+    for bid in &game_state.auction_bids
+    {
+        info!("Unresolved bid at end of test: player {} bid {} on pc {}",
+                bid.order, bid.private_company as usize, bid.bid_amount);
+    }
+    
     for player in players.iter()
     {
         info!("Player {} (id:{}) ends with money {}",
