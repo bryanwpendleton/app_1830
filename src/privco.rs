@@ -221,10 +221,36 @@ pub fn highest_bid_for_pc(game_state: &GameState, pc: &PrivateCompany)
 pub fn resolve_pc_bids(
     commands: &mut Commands,
     game_state: &mut GameState,
+    players: &mut Query<&mut Player>,
     pc: PrivateCompany,
     bidders: u32,
     lowest_bidder: u32,
 ) {
+    if bidders == 1
+    {
+        let mut idx = 0;
+        while idx < game_state.auction_bids.len()
+        {
+            if game_state.auction_bids[idx].private_company == pc &&
+               game_state.auction_bids[idx].order == lowest_bidder
+            {
+                info!("The {:?} is bought by player {} for {}",
+                    pc, lowest_bidder,
+                    game_state.auction_bids[idx].bid_amount);
+
+                // We buy it for $0 because we're applying the bid, so
+                // the money was already accounted for.
+
+                buy_pc_impl( commands, game_state, players, lowest_bidder,
+                    pc, 0);
+
+                game_state.auction_bids.remove(idx);
+                return;
+            }
+            idx += 1;
+        }
+    }
+
     info!("Finalize auction for {:?}", pc);
 
     game_state.auction_state.pc = pc;
@@ -271,25 +297,38 @@ pub fn resolve_pass_impl(
         }
 
         let mut i_rev = game_state.auction_bids.len() - 1;
-        while i_rev > 0
+        while i_rev >= 0
         {
             if game_state.auction_bids[i_rev].private_company == pc
             {
                 let amt = game_state.auction_bids[i_rev].bid_amount;
+
+                info!("Found a non-winning bid of {} for {:?}", amt, pc);
                 
                 for mut player in players.iter_mut()
                 {
                     if player.order == game_state.auction_bids[i_rev].order
                     {
+                        info!("Returning the money from the losing bid to {}",
+                                player.order);
                         player.assets.personal_money += amt;
                     }
                 }
                 game_state.auction_bids.remove(i_rev);
             }
-            if i_rev > 0
+            else
             {
-                i_rev -= 1;
+                info!("Bid of {} from player {} was not for {:?} but for {:?}",
+                    game_state.auction_bids[i_rev].bid_amount,
+                    game_state.auction_bids[i_rev].order,
+                    pc,
+                    game_state.auction_bids[i_rev].private_company);
             }
+            if i_rev == 0
+            {
+                break;
+            }
+            i_rev -= 1;
         }
     }
 }
@@ -356,7 +395,7 @@ pub fn do_simple_auction_tests(
     // on the DH can be resolved.  Bruce’s original bid of $75
     // is the lowest, so he bids first. He bids $85. 
 
-    resolve_pc_bids( &mut commands, &mut game_state,
+    resolve_pc_bids( &mut commands, &mut game_state, &mut players,
                     PrivateCompany::DelawareAndHudson,
                     2, 2);
 
@@ -389,7 +428,7 @@ pub fn do_simple_auction_tests(
     // his $212 and takes the CA and the free PRR certifiate
     // that goes with it—a bargain.
 
-    resolve_pc_bids( &mut commands, &mut game_state,
+    resolve_pc_bids( &mut commands, &mut game_state, &mut players,
                     PrivateCompany::CamdenAndAmboy,
                     2, 0);
 
@@ -408,6 +447,10 @@ pub fn do_simple_auction_tests(
     // There is only one bid on the BO, so Dave pays his $225
     // and takes the BO. 
 
+    resolve_pc_bids( &mut commands, &mut game_state, &mut players,
+                    PrivateCompany::BaltimoreAndOhio,
+                    1, 1);
+
     // The end results are:
     // - Gerald: $490, MH
     // - Dave: $355, BO, SV, Priority Deal card, B&O President’s certificate
@@ -417,8 +460,10 @@ pub fn do_simple_auction_tests(
     // all the bids should have been resolved
     for bid in &game_state.auction_bids
     {
-        info!("Unresolved bid at end of test: player {} bid {} on pc {}",
-                bid.order, bid.private_company as usize, bid.bid_amount);
+        info!("Unresolved bid at end of test: player {} bid {} on pc {:?}",
+                bid.order,
+                bid.bid_amount,
+                bid.private_company);
     }
     
     for player in players.iter()
