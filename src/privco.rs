@@ -4,6 +4,7 @@ use bevy_egui::EguiContexts;
 use crate::gamemodel::GameState;
 use crate::gamemodel::Player;
 use crate::gamemodel::PrivateCompany;
+use crate::gamemodel::PriorityDealCard;
 
 use crate::gamemodel::create_players;
 
@@ -183,7 +184,12 @@ pub fn move_priority_deal_card(
 ) {
     
     commands.entity(game_state.priority_deal_card_holder)
-            .move_components::game_state.player_by_player_id[player_order];
+                    .remove::<PriorityDealCard>();
+    commands.entity(game_state.player_by_player_id[player_id as usize])
+                    .insert(PriorityDealCard);
+
+    game_state.priority_deal_card_holder =
+                    game_state.player_by_player_id[player_id as usize];
 }
 
 pub fn auction_pass_impl(
