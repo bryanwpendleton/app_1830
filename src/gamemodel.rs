@@ -204,8 +204,8 @@ impl GameState {
             phase: GamePhase::PurchasePrivateCompanies,
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
-            priority_deal_card_holder : 0,
-            player_by_player_id : [Entity;6],
+            priority_deal_card_holder : Entity::PLACEHOLDER,
+            player_by_player_id : [Entity::PLACEHOLDER;6],
             market: HashMap::new(),
             market_state: MarketState {
                 passes: 0,
