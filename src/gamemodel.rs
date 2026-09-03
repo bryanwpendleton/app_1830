@@ -55,7 +55,7 @@ pub struct PlayerAssets {
 ///   round ends. The number of consecutive passes is global
 ///   GameState, incremented when the current player passes
 ///   and reset to zero when a play buys or sells
-/// - the player immediatel after the last player that bought or
+/// - the player immediately after the last player that bought or
 ///   sold a certificate is given the priority deal card, indicating
 ///   that player takes the first turn in the next stock round.
 ///
@@ -164,6 +164,10 @@ pub struct GameState {
     pub bank: u32,
     pub num_players: u32,
 
+    pub priority_deal_card_holder : Entity,
+    // player entity by player_id; there may be fewer than 6 players
+    pub player_by_player_id: [Entity;6],
+
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
 
@@ -200,6 +204,8 @@ impl GameState {
             phase: GamePhase::PurchasePrivateCompanies,
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
+            priority_deal_card_holder : 0,
+            player_by_player_id : [Entity;6],
             market: HashMap::new(),
             market_state: MarketState {
                 passes: 0,
@@ -629,15 +635,21 @@ pub fn create_players(commands: &mut Commands,
     game_state.num_players = num_players;
 
     for name in names {
-        commands.spawn(Player {
-            name,
-            order: player_order,
-            assets: PlayerAssets {
-                personal_money: starting_money,
-                corporations: [0; 8],
-                private_companies: [0; 6],
-            },
-        });
+        let player_entity =
+            commands.spawn(Player {
+                name,
+                order: player_order,
+                assets: PlayerAssets {
+                    personal_money: starting_money,
+                    corporations: [0; 8],
+                    private_companies: [0; 6],
+                },
+            }).id();
+        game_state.player_by_player_id[player_order as usize] = player_entity;
+        if player_order == 0
+        {
+            game_state.priority_deal_card_holder = player_entity;
+        }
         player_order += 1;
     }
 }

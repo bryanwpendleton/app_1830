@@ -166,12 +166,24 @@ pub fn buy_pc_impl(
 
             info!("Player {} buys private company {:?} for {}, money now {}",
                 player_id, pc, amount, player.assets.personal_money);
-        }
-        if player.order == (player_id + 1) % game_state.num_players
-        {
-            info!("Don't know how to re-assign Priority Deal Card");
+
+            move_priority_deal_card(commands, game_state,
+                            (player_id + 1) % game_state.num_players);
         }
     }
+}
+
+// Moves the CurrentPlayer component directly from the current holder to
+// the specified player_id.
+//
+pub fn move_priority_deal_card(
+    commands: &mut Commands,
+    game_state: &mut GameState,
+    player_id: u32,
+) {
+    
+    commands.entity(game_state.priority_deal_card_holder)
+            .move_components::game_state.player_by_player_id[player_order];
 }
 
 pub fn auction_pass_impl(
