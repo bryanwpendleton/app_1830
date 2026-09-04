@@ -15,6 +15,54 @@ use crate::gamemodel::create_players;
 // they can be resold. All the private companies must be sold at the
 // start of the game before anything else happens. This is the special
 // phase GamePhase::PurchasePrivateCompanies.
+
+pub const NUM_PRIVATE_COMPANIES: usize = 6;
+
+/// The OwnedByPlayer and OwnedByRR states also encode *which* player
+/// or Railroad owns the PrivateCompany
+pub enum PrivateCompanyState
+{
+    Unsold = 0,
+    HasBids = 1,
+    OwnedByPlayer = 10, // 10 through 10+(numPlayers-1)
+    OwnedByRR = 20,     // 20-27 (numRRs = 8)
+    Closed = 30,
+
+    UnknownPCState = 100,
+}
+
+impl PrivateCompanyState
+{
+    pub fn formatState(encoded_state: u32 ) -> String
+    {
+        if encoded_state == PrivateCompanyState::Unsold as u32
+        {
+            return "Unsold".to_owned();
+        }
+        if encoded_state == PrivateCompanyState::HasBids as u32
+        {
+            return "Has Bids".to_owned();
+        }
+        if encoded_state >= PrivateCompanyState::OwnedByPlayer as u32 &&
+           encoded_state <  PrivateCompanyState::OwnedByPlayer as u32 + 5
+        {
+            return format!("Owned by player {}", 
+               encoded_state - PrivateCompanyState::OwnedByPlayer as u32);
+        }
+        if encoded_state >= PrivateCompanyState::OwnedByRR as u32 &&
+           encoded_state <  PrivateCompanyState::OwnedByRR as u32 + 7
+        {
+            return format!("Owned by RailRoad {}", 
+               encoded_state - PrivateCompanyState::OwnedByRR as u32);
+        }
+        if encoded_state == PrivateCompanyState::Closed as u32
+        {
+            return "Closed".to_owned();
+        }
+        return format!("Unknown private company state {}", encoded_state);
+    }
+}
+
 //
 // While they are open, they pay their own some revenue for each
 // operating round. Once closed, certain events may be triggered.
@@ -58,6 +106,13 @@ pub struct PlayerBid
 // private company, you must first have made a bid for that private
 // company during the AllowBids phase. 
 //
+
+#[derive(PartialEq)]
+pub enum PrivateCompanyAuctionSubphase
+{
+    AllowBids,
+    ResolveBids,
+}
 
 pub enum AllowBidsAction
 {
@@ -107,6 +162,8 @@ pub fn place_bid_impl(
             bid_amount: amount,
         }
     );
+    game_state.private_company_states[pc as usize] = 
+                            PrivateCompanyState::HasBids as u32;
 }
 
 // During the final auction for a PC, you can raise your bid.
@@ -146,6 +203,21 @@ pub fn raise_bid_impl(
 
 }
 
+pub fn lowest_unsold_pc( game_state: &mut GameState ) -> PrivateCompany
+{
+    let mut pc_idx: usize = 0;
+    while pc_idx < NUM_PRIVATE_COMPANIES
+    {
+        if game_state.private_company_states[pc_idx] ==
+            PrivateCompanyState::Unsold as u32
+        {
+            return PrivateCompany::fromInteger(pc_idx);
+        }
+        pc_idx += 1;
+    }
+    return PrivateCompany::UnknownPrivateCompany;
+}
+
 // Pay face value to buy the unsold private company that has
 // the lowest face value. The player to your left gets the
 // priority deal card.
@@ -164,6 +236,9 @@ pub fn buy_pc_impl(
         {
             player.assets.personal_money -= amount;
             player.assets.private_companies[pc as usize] = 1;
+
+            game_state.private_company_states[pc as usize] =
+                PrivateCompanyState::OwnedByPlayer as u32 + player_id;
 
             info!("Player {} buys private company {:?} for {}, money now {}",
                 player_id, pc, amount, player.assets.personal_money);

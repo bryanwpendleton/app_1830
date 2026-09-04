@@ -14,6 +14,7 @@ use routemap::{setup_routemap, spawn_routemap,
                 handle_tile_clicks};
 use stockmarket::initialize_stock_market;
 use routemap::do_simple_routefinding_tests;
+use crate::gamemodel::setup_dummy_players;
 use privco::create_auction_test_players;
 use privco::do_simple_auction_tests;
 
@@ -54,8 +55,7 @@ fn main() {
                     spawn_tracktile_inventory,
                     spawn_tile_placement_data,
                     initialize_stock_market,
-                    create_auction_test_players,
-                    do_simple_auction_tests).chain())
+                    setup_dummy_players).chain())
         .add_systems(Update, (handle_tile_clicks, clamp_window_to_monitor))
         .run();
 }

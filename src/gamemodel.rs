@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use egui::Ui;
+
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
@@ -17,7 +19,10 @@ use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
+use crate::privco::NUM_PRIVATE_COMPANIES;
 use crate::privco::PlayerBid;
+use crate::privco::PrivateCompanyAuctionSubphase;
+use crate::privco::PrivateCompanyState;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -116,6 +121,22 @@ pub enum PrivateCompany {
 
     UnknownPrivateCompany = 254,
 }
+impl PrivateCompany
+{
+    pub fn fromInteger(i: usize) -> PrivateCompany
+    {
+        match (i)
+        {
+            0 => PrivateCompany::SchuykillValley,
+            1 => PrivateCompany::ChamplainAndStLawrence,
+            2 => PrivateCompany::DelawareAndHudson,
+            3 => PrivateCompany::MohawkAndHudson,
+            4 => PrivateCompany::CamdenAndAmboy,
+            5 => PrivateCompany::BaltimoreAndOhio,
+            _ => PrivateCompany::UnknownPrivateCompany,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Train {
@@ -162,7 +183,7 @@ pub struct CurrentPCAuction
 pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
-    pub num_players: u32,
+    pub num_players: u32, // 2-6
 
     pub priority_deal_card_holder : Entity,
     // player entity by player_id; there may be fewer than 6 players
@@ -171,8 +192,10 @@ pub struct GameState {
     pub market: HashMap<String, GridBox>,
     pub market_state: MarketState,
 
+    pub private_company_states: [u32;6], // for values see PrivateCompanyState
     pub auction_bids: Vec<PlayerBid>,
     pub auction_state: CurrentPCAuction,
+    pub auction_subphase : PrivateCompanyAuctionSubphase,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -212,6 +235,7 @@ impl GameState {
                 last_buy_sell: 0,
             },
 
+            private_company_states: [0;6],
             auction_bids: Vec::new(),
             auction_state: CurrentPCAuction {
                 pc: PrivateCompany::UnknownPrivateCompany,
@@ -219,6 +243,7 @@ impl GameState {
                 num_passes: 0,
                 current_bidder: 0
             },
+            auction_subphase: PrivateCompanyAuctionSubphase::AllowBids,
 
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
@@ -536,7 +561,7 @@ pub fn place_tile_impl(
 /// Runs in the [`EguiPrimaryContextPass`] schedule and draws a right-hand
 /// side panel as an overlay on top of the hex map, leaving the map rendering
 /// untouched.
-pub fn game_state_panel(
+pub fn game_state_panel_right(
     mut contexts: EguiContexts,
     mut game_state: ResMut<GameState>,
 ) -> Result {
@@ -545,13 +570,79 @@ pub fn game_state_panel(
     // Panels render into a Ui built over the viewport background layer.
     let mut viewport_ui = egui::Ui::new(
         ctx.clone(),
-        "game_info_viewport".into(),
+        "game_info_viewport_right".into(),
         egui::UiBuilder::new()
             .layer_id(egui::LayerId::background())
             .max_rect(ctx.viewport_rect()),
     );
 
-    egui::Panel::right("game_info_panel")
+    egui::Panel::right("game_info_panel_right")
+        .resizable(false)
+        .default_size(220.0)
+        .show(&mut viewport_ui, |ui| {
+            ui.heading("1830");
+            ui.separator();
+
+            ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
+
+            ui.separator();
+        });
+
+    Ok(())
+}
+
+// During this intermediate time where we're using egui rather than a
+// more integrated Bevy gui, the left panel is read-only, and contains
+// important information that the current player needs to be able to
+// make their current game decision.
+
+pub fn build_left_side_privatecompany_ui( ui: &mut Ui, game_state: & GameState)
+{
+    // for the purchase private companies phase, we need to show:
+    //
+    // - how much money the current player has available.
+    //
+    // - the unpurchased private companies
+    // - what bids have already been made on them, how much, by whom
+    // 
+    // The details of the above further depend on whether we are
+    // currently allowing new bids (AllowBids), or whether we are currently
+    // resolving the final bids for a particular PC (ResolveBids)
+
+    let mut pc_idx : usize = 0;
+    while pc_idx < NUM_PRIVATE_COMPANIES
+    {
+        ui.label(format!("{:?}: {}",
+                    PrivateCompany::fromInteger(pc_idx),
+                    PrivateCompanyState::formatState(
+                            game_state.private_company_states[pc_idx])));
+        pc_idx += 1;
+    }
+
+    if game_state.auction_subphase == PrivateCompanyAuctionSubphase::AllowBids
+    {
+    }
+    else
+    {
+    }
+}
+
+pub fn game_state_panel_left(
+    mut contexts: EguiContexts,
+    mut game_state: ResMut<GameState>,
+) -> Result {
+    let ctx = contexts.ctx_mut()?.clone();
+
+    // Panels render into a Ui built over the viewport background layer.
+    let mut viewport_ui = egui::Ui::new(
+        ctx.clone(),
+        "game_info_viewport_left".into(),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::background())
+            .max_rect(ctx.viewport_rect()),
+    );
+
+    egui::Panel::left("game_info_panel_left")
         .resizable(false)
         .default_size(220.0)
         .show(&mut viewport_ui, |ui| {
@@ -560,53 +651,13 @@ pub fn game_state_panel(
 
             ui.label(format!("Phase: {}", game_state.phase_label()));
             ui.label(format!("Bank: ${}", game_state.bank));
+            ui.separator();
 
-            if ui.button("Advance Phase").clicked() {
-                let msg = game_state.advance_phase();
-                info!("{}", msg);
+            if game_state.phase == GamePhase::PurchasePrivateCompanies
+            {
+                build_left_side_privatecompany_ui( ui, &game_state);
             }
 
-            ui.separator();
-
-            ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
-/*
-            let pickable_map_hexes = vec!["B10", "B12", "B14",
-                "B16", "B18", "B20", "B22", "C7", "C9", "C11",
-                "C13", "C17", "C19", "C21", "C23", "D4", "D6",
-                "D8", "D10", "D12", "D16", "D18", "D10", "D22",
-                "E3", "E5", "E7", "E11", "E13", "E15", "E17",
-                "E19", "E21", "E23", "F4", "F8", "F10", "F12",
-                "F14", "F16", "F18", "F20", "F22", "G3", "G5",
-                "G7", "G9", "G11", "G13", "G15", "G17", "G19",
-                "H2", "H4", "H6", "H8", "H10", "H14", "F16",
-                "H18", "H20", "I3", "I5", "I7", "I9", "I11",
-                "I13", "I15", "I17", "J4", "J6", "J8", "J10",
-                "J12", "J14"];
-
-            let pickable_yellow_tiles =
-                vec!["T1", "T2", "T3", "T4", "T5", "T6", "T7",
-                    "T8", "T9", "T55", "T56", "T57", "T58", "T69"];
-            let pickable_green_tiles =
-                vec!["T14", "T15", "T16", "T18", "T19", "T20",
-                    "T23", "T24", "T25", "T26", "T27", "T28",
-                    "T29", "T53", "T54", "T59"];
-            let pickable_orange_tiles =
-                vec!["T39", "T40", "T41", "T42", "T43", "T44",
-                    "T45", "T46", "T47", "T61", "T62", "T63",
-                    "T64", "T65", "T66", "T67", "T68", "T70"];
-            let pickable_tiles : Vec<&str> = 
-                vec![pickable_yellow_tiles.clone(),
-                    pickable_green_tiles.clone(),
-                    pickable_orange_tiles.clone()]
-                .into_iter().flatten().collect();
-
-            let pickable_facings =
-                vec!["none", "f2", "f3", "f4", "f5", "f6"];
-            let mut selected_facing = 0;
-
-*/
-
-            ui.separator();
         });
 
     Ok(())
@@ -654,7 +705,7 @@ pub fn create_players(commands: &mut Commands,
     }
 }
 
-/// System to initialize a dummy game with 3 players
+/// System to initialize a dummy game with some players
 pub fn setup_dummy_players(mut commands: Commands,
                     mut game_state: ResMut<GameState>)
 {
@@ -662,7 +713,7 @@ pub fn setup_dummy_players(mut commands: Commands,
 
     create_players( &mut commands,
             &mut game_state,
-            vec!["Bryan".into(), "Dan".into(), "Tay".into()]);
+            vec!["Bryan".into(), "Dan".into()]);
 }
 
 // ============================================================================
@@ -703,7 +754,8 @@ impl Plugin for Game1830Plugin {
 
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
-            .add_systems(EguiPrimaryContextPass, game_state_panel)
+            .add_systems(EguiPrimaryContextPass, 
+                (game_state_panel_left, game_state_panel_right) )
 
         // Update systems run every frame
         // TODO: Add update systems when needed
