@@ -589,7 +589,7 @@ pub fn place_tile_impl(
 /// side panel as an overlay on top of the hex map, leaving the map rendering
 /// untouched.
 pub fn game_state_panel_right(
-    commands: &mut Commands,
+    mut commands: Commands,
     mut contexts: EguiContexts,
     mut players: Query<&mut Player>,
     mut game_state: ResMut<GameState>,
@@ -614,8 +614,8 @@ pub fn game_state_panel_right(
 
             if game_state.phase == GamePhase::PurchasePrivateCompanies
             {
-                build_right_side_privatecompany_ui( 
-                        commands, ui, &players, &mut game_state);
+                build_right_side_privatecompany_ui(
+                        &mut commands, ui, &mut players, &mut game_state);
             }
             // ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
 
@@ -633,7 +633,7 @@ pub fn game_state_panel_right(
 pub fn build_right_side_privatecompany_ui(
             commands: &mut Commands,
             ui: &mut Ui,
-            players: & Query<& mut Player>,
+            players: &mut Query<& mut Player>,
             game_state: & mut GameState)
 {
     // CURRENT_PLAYER: you can:
@@ -641,27 +641,37 @@ pub fn build_right_side_privatecompany_ui(
     // Bid on (private company droplist) for (amount) (>= min bid)
     // Button("Pass")
 
-    if let Ok(current_player) = players.get(game_state.current_player)
+    // Read the current player's display values up front so the shared
+    // borrow of `players` ends before we pass `players` mutably to the
+    // auction/bid helpers below.
+    let Ok(current_player) = players.get(game_state.current_player) else {
+        return;
+    };
+    let current_order = current_player.order;
+    let current_name = current_player.name.clone();
+    let current_money = current_player.assets.personal_money;
+
     {
         ui.label(format!("{}: you have {} and may:",
-            current_player.name,
-            current_player.assets.personal_money));
+            current_name,
+            current_money));
 
         if ui.button("Pass").clicked()
         {
             auction_pass_impl( commands, game_state,
-                                &players, current_player.order);
+                                players, current_order);
             return;
         }
         else
         {
             let mut first_unsold: bool = true;
             let mut pc_idx: usize = 0;
-            let pc = PrivateCompany::fromInteger(pc_idx);
-            let price = PrivateCompany::faceValue(pc);
 
             while pc_idx < NUM_PRIVATE_COMPANIES
             {       
+                let pc = PrivateCompany::fromInteger(pc_idx);
+                let price = PrivateCompany::faceValue(pc);
+
                 if game_state.private_company_states[pc_idx] ==
                     PrivateCompanyState::Unsold as u32 &&
                     first_unsold
@@ -669,8 +679,8 @@ pub fn build_right_side_privatecompany_ui(
                     if ui.button(format!("Buy {:?} for {}",
                         pc, price)).clicked()
                     {
-                        buy_pc_impl(commands, game_state, & players,
-                                current_player.order, pc, price);
+                        buy_pc_impl(commands, game_state, players,
+                                current_order, pc, price);
                         return;
                     }
                     first_unsold = false;
@@ -681,8 +691,8 @@ pub fn build_right_side_privatecompany_ui(
                 if ui.button(format!("Bid at least {} on {:?}",
                             777, pc)).clicked()
                 {
-                    place_bid_impl(commands, game_state, & players,
-                                current_player.order, pc, 111);
+                    place_bid_impl(commands, game_state, players,
+                                current_order, pc, 111);
                     return;
                 }           
                 pc_idx += 1;
