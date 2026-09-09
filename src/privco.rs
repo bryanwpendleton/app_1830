@@ -137,7 +137,7 @@ pub enum ResolveBidsAction
 pub fn place_bid_impl(
     commands: &mut Commands,
     game_state: &mut GameState,
-    players: &mut Query<&mut Player>,
+    players: &Query<&mut Player>,
     player_id: u32,
     pc: PrivateCompany,
     amount: u32 )
@@ -147,7 +147,7 @@ pub fn place_bid_impl(
     // todo: make sure the new bid exceeds the face value of the PC
 
     // reduce player.personal_money by amount
-    for mut player in players.iter_mut()
+    for mut player in players()
     {
         if player.order == player_id
         {
@@ -225,12 +225,12 @@ pub fn lowest_unsold_pc( game_state: &mut GameState ) -> PrivateCompany
 pub fn buy_pc_impl(
     commands: &mut Commands,
     game_state: &mut GameState,
-    players: &mut Query<&mut Player>,
+    players: &Query<&mut Player>,
     player_id: u32,
     pc: PrivateCompany,
     amount: u32 )
 {
-    for mut player in players.iter_mut()
+    for mut player in players()
     {
         if player.order == player_id
         {
@@ -249,7 +249,7 @@ pub fn buy_pc_impl(
     }
 }
 
-// Moves the CurrentPlayer component directly from the current holder to
+// Moves the PriorityDeal component directly from the current holder to
 // the specified player_id.
 //
 pub fn move_priority_deal_card(
@@ -270,7 +270,7 @@ pub fn move_priority_deal_card(
 pub fn auction_pass_impl(
     commands: &mut Commands,
     game_state: &mut GameState,
-    players: &mut Query<&mut Player>,
+    players: & Query<&mut Player>,
     player_id: u32,
 ) {
     info!("Auction pass not implemented yet:");

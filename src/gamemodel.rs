@@ -23,6 +23,9 @@ use crate::privco::NUM_PRIVATE_COMPANIES;
 use crate::privco::PlayerBid;
 use crate::privco::PrivateCompanyAuctionSubphase;
 use crate::privco::PrivateCompanyState;
+use crate::privco::auction_pass_impl;
+use crate::privco::buy_pc_impl;
+use crate::privco::place_bid_impl;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -136,6 +139,19 @@ impl PrivateCompany
             _ => PrivateCompany::UnknownPrivateCompany,
         }
     }
+    pub fn faceValue(pc : PrivateCompany) -> u32
+    {
+        match pc
+        {
+            PrivateCompany::SchuykillValley => 20,
+            PrivateCompany::ChamplainAndStLawrence => 40,
+            PrivateCompany::DelawareAndHudson => 70,
+            PrivateCompany::MohawkAndHudson => 110,
+            PrivateCompany::CamdenAndAmboy => 160,
+            PrivateCompany::BaltimoreAndOhio => 220,
+            _ => 999,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -186,6 +202,7 @@ pub struct GameState {
     pub num_players: u32, // 2-6
 
     pub priority_deal_card_holder : Entity,
+    pub current_player : Entity,
     // player entity by player_id; there may be fewer than 6 players
     pub player_by_player_id: [Entity;6],
 
@@ -228,6 +245,7 @@ impl GameState {
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
             priority_deal_card_holder : Entity::PLACEHOLDER,
+            current_player : Entity::PLACEHOLDER,
             player_by_player_id : [Entity::PLACEHOLDER;6],
             market: HashMap::new(),
             market_state: MarketState {
@@ -366,10 +384,19 @@ pub enum RoundSet {
 /// Resets the pass tracking that determines when the round ends. The priority
 /// deal and current-player selection will be wired in here as those systems
 /// come online.
-pub fn start_stock_round(mut game_state: ResMut<GameState>) {
+pub fn start_stock_round(mut game_state: ResMut<GameState>,
+                    priority_deal: Query<Entity, With<PriorityDealCard>>,
+) {
+    info!("=== Stock Round starting ===");
+
     game_state.market_state.passes = 0;
     game_state.market_state.last_buy_sell = 0;
-    info!("=== Stock Round starting ===");
+
+    let player_entity = priority_deal.single();
+    if let Ok(current_player) = player_entity
+    {
+        game_state.current_player = current_player;
+    }
 }
 
 /// Runs once each time an Operating Round begins (on entering
@@ -562,7 +589,9 @@ pub fn place_tile_impl(
 /// side panel as an overlay on top of the hex map, leaving the map rendering
 /// untouched.
 pub fn game_state_panel_right(
+    commands: &mut Commands,
     mut contexts: EguiContexts,
+    mut players: Query<&mut Player>,
     mut game_state: ResMut<GameState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
@@ -583,7 +612,12 @@ pub fn game_state_panel_right(
             ui.heading("1830");
             ui.separator();
 
-            ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
+            if game_state.phase == GamePhase::PurchasePrivateCompanies
+            {
+                build_right_side_privatecompany_ui( 
+                        commands, ui, &players, &mut game_state);
+            }
+            // ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
 
             ui.separator();
         });
@@ -596,7 +630,71 @@ pub fn game_state_panel_right(
 // important information that the current player needs to be able to
 // make their current game decision.
 
-pub fn build_left_side_privatecompany_ui( ui: &mut Ui, game_state: & GameState)
+pub fn build_right_side_privatecompany_ui(
+            commands: &mut Commands,
+            ui: &mut Ui,
+            players: & Query<& mut Player>,
+            game_state: & mut GameState)
+{
+    // CURRENT_PLAYER: you can:
+    // Button("Buy {PrivateCompany} for NN")
+    // Bid on (private company droplist) for (amount) (>= min bid)
+    // Button("Pass")
+
+    if let Ok(current_player) = players.get(game_state.current_player)
+    {
+        ui.label(format!("{}: you have {} and may:",
+            current_player.name,
+            current_player.assets.personal_money));
+
+        if ui.button("Pass").clicked()
+        {
+            auction_pass_impl( commands, game_state,
+                                &players, current_player.order);
+            return;
+        }
+        else
+        {
+            let mut first_unsold: bool = true;
+            let mut pc_idx: usize = 0;
+            let pc = PrivateCompany::fromInteger(pc_idx);
+            let price = PrivateCompany::faceValue(pc);
+
+            while pc_idx < NUM_PRIVATE_COMPANIES
+            {       
+                if game_state.private_company_states[pc_idx] ==
+                    PrivateCompanyState::Unsold as u32 &&
+                    first_unsold
+                {   
+                    if ui.button(format!("Buy {:?} for {}",
+                        pc, price)).clicked()
+                    {
+                        buy_pc_impl(commands, game_state, & players,
+                                current_player.order, pc, price);
+                        return;
+                    }
+                    first_unsold = false;
+                }
+                // Need to compute the minimum new bid.
+                // Need a place for user to input their bid value.
+                // could check to see if we've already bid on this one.
+                if ui.button(format!("Bid at least {} on {:?}",
+                            777, pc)).clicked()
+                {
+                    place_bid_impl(commands, game_state, & players,
+                                current_player.order, pc, 111);
+                    return;
+                }           
+                pc_idx += 1;
+            }    
+        }
+    }
+
+}
+
+pub fn build_left_side_privatecompany_ui( ui: &mut Ui,
+                                        mut players: Query<&Player>,
+                                        game_state: & GameState)
 {
     // for the purchase private companies phase, we need to show:
     //
@@ -608,6 +706,13 @@ pub fn build_left_side_privatecompany_ui( ui: &mut Ui, game_state: & GameState)
     // The details of the above further depend on whether we are
     // currently allowing new bids (AllowBids), or whether we are currently
     // resolving the final bids for a particular PC (ResolveBids)
+
+    if let Ok(current_player) = players.get(game_state.current_player)
+    {
+        ui.label(format!("{}: you have {}",
+            current_player.name,
+            current_player.assets.personal_money));
+    }
 
     let mut pc_idx : usize = 0;
     while pc_idx < NUM_PRIVATE_COMPANIES
@@ -629,6 +734,7 @@ pub fn build_left_side_privatecompany_ui( ui: &mut Ui, game_state: & GameState)
 
 pub fn game_state_panel_left(
     mut contexts: EguiContexts,
+    players: Query<&Player>,
     mut game_state: ResMut<GameState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
@@ -655,7 +761,7 @@ pub fn game_state_panel_left(
 
             if game_state.phase == GamePhase::PurchasePrivateCompanies
             {
-                build_left_side_privatecompany_ui( ui, &game_state);
+                build_left_side_privatecompany_ui( ui, players, &game_state);
             }
 
         });
@@ -686,6 +792,7 @@ pub fn create_players(commands: &mut Commands,
     game_state.num_players = num_players;
 
     for name in names {
+        let nmclone = name.clone();
         let player_entity =
             commands.spawn(Player {
                 name,
@@ -700,6 +807,10 @@ pub fn create_players(commands: &mut Commands,
         if player_order == 0
         {
             game_state.priority_deal_card_holder = player_entity;
+            commands.entity(player_entity).insert(PriorityDealCard);
+            game_state.current_player = player_entity;
+            info!("Player {} will have the PriorityDealCard to start",
+                    nmclone);
         }
         player_order += 1;
     }
