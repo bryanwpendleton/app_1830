@@ -19,6 +19,9 @@ use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
+use crate::stockmarket::railroad_purchase_options;
+use crate::stockmarket::buy_railroad_impl;
+use crate::stockmarket::PurchaseDecision;
 use crate::privco::NUM_PRIVATE_COMPANIES;
 use crate::privco::PlayerBid;
 use crate::privco::PrivateCompanyAuctionSubphase;
@@ -26,6 +29,7 @@ use crate::privco::PrivateCompanyState;
 use crate::privco::auction_pass_impl;
 use crate::privco::buy_pc_impl;
 use crate::privco::place_bid_impl;
+use crate::privco::minimum_bid_for_pc;
 
 // ============================================================================
 // COMPONENTS - Data attached to entities
@@ -102,10 +106,57 @@ pub struct MarketState {
     pub last_buy_sell: u32,
 }
 
+// The Railroad Corporations don't have any natural order,
+// here we just list them in the order they occur in the rules.
+
+pub const NUM_RAILROADS: usize = 8;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Railroad {
+    Pennsylvania = 0,
+    NewYorkCentral = 1,
+    CanadianPacific = 2,
+    BaltimoreAndOhio = 3,
+    ChesapeakeAndOhio = 4,
+    Erie = 5,
+    NewYorkNewHavenAndHartford = 6,
+    BostonAndMaine = 7,
+}
+
 /// Marks an entity as a Railroad Corporation
 #[derive(Component)]
 pub struct RailroadCorporation {
     pub name: String,
+    pub short_name: String,
+    pub par_value: u32,
+    pub num_stations: u32,
+    pub starting_city: String,
+    pub starting_hex: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParValue {
+    SixtySeven = 67,
+    SeventyOne = 71,
+    SeventySix = 76,
+    EightyTwo = 82,
+    Ninety = 90,
+    OneHundred = 100,
+} 
+impl ParValue
+{
+    pub fn name(&self) -> &str
+    {
+        match self
+        {
+            ParValue::SixtySeven => "68",
+            ParValue::SeventyOne => "71",
+            ParValue::SeventySix => "76",
+            ParValue::EightyTwo => "82",
+            ParValue::Ninety => "90",
+            ParValue::OneHundred => "100",
+        }
+    }
 }
 
 /// Marks a RailroadPresident
@@ -164,18 +215,6 @@ pub enum Train {
     Diesel = 7,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Corporation {
-    Pennsylvania = 0,
-    NewYorkCentral = 1,
-    CanadianPacific = 2,
-    BaltimoreAndOhio = 3,
-    ChesapeakeAndOhio = 4,
-    Erie = 5,
-    NewYorkNewHavenAndHartford = 6,
-    BostonAndMaine = 7,
-}
-
 // CurrentPCAuction holds the state for resolving an auction for
 // a PrivateCompany:
 //
@@ -213,6 +252,9 @@ pub struct GameState {
     pub auction_bids: Vec<PlayerBid>,
     pub auction_state: CurrentPCAuction,
     pub auction_subphase : PrivateCompanyAuctionSubphase,
+
+    pub current_par_value: ParValue ,
+    pub railroads: Vec<RailroadCorporation>,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -262,6 +304,74 @@ impl GameState {
                 current_bidder: 0
             },
             auction_subphase: PrivateCompanyAuctionSubphase::AllowBids,
+
+            current_par_value: ParValue::SixtySeven,
+            railroads: vec![
+                RailroadCorporation {
+                    name: "Pennsylvania".to_string(),
+                    short_name: "PRR".to_string(),
+                    par_value: 0,
+                    num_stations: 4,
+                    starting_city: "Altoona".to_string(),
+                    starting_hex: "H12".to_string(),
+                },
+                RailroadCorporation {
+                    name: "New York Central".to_string(),
+                    short_name: "NYC".to_string(),
+                    par_value: 0,
+                    num_stations: 4,
+                    starting_city: "Albany".to_string(),
+                    starting_hex: "E19".to_string(),
+                },
+                RailroadCorporation {
+                    name: "Canadian Pacific".to_string(),
+                    short_name: "CPR".to_string(),
+                    par_value: 0,
+                    num_stations: 4,
+                    starting_city: "Montreal".to_string(),
+                    starting_hex: "A19".to_string(),
+                },
+                RailroadCorporation {
+                    name: "Baltimore & Ohio".to_string(),
+                    short_name: "B&O".to_string(),
+                    par_value: 0,
+                    num_stations: 3,
+                    starting_city: "Baltimore".to_string(),
+                    starting_hex: "I15".to_string(),
+                },
+                RailroadCorporation {
+                    name: "Chesapeake & Ohio".to_string(),
+                    short_name: "C&O".to_string(),
+                    par_value: 0,
+                    num_stations: 3,
+                    starting_city: "Cleveland".to_string(),
+                    starting_hex: "F6".to_string(),
+                },
+                RailroadCorporation {
+                    name: "Erie".to_string(),
+                    short_name: "Erie".to_string(),
+                    par_value: 0,
+                    num_stations: 3,
+                    starting_city: "Buffalo".to_string(),
+                    starting_hex: "E11".to_string(),
+                },
+                RailroadCorporation {
+                    name: "New York, New Haven, & Hartford".to_string(),
+                    short_name: "NNH".to_string(),
+                    par_value: 0,
+                    num_stations: 2,
+                    starting_city: "New York".to_string(),
+                    starting_hex: "G19".to_string(),
+                },
+                RailroadCorporation {
+                    name: "Boston & Maine".to_string(),
+                    short_name: "B&M".to_string(),
+                    par_value: 0,
+                    num_stations: 2,
+                    starting_city: "Boston".to_string(),
+                    starting_hex: "E23".to_string(),
+                },
+            ],
 
             tile_by_coord: HashMap::new(),
             tile_by_name: HashMap::new(),
@@ -617,6 +727,12 @@ pub fn game_state_panel_right(
                 build_right_side_privatecompany_ui(
                         &mut commands, ui, &mut players, &mut game_state);
             }
+            else
+            {
+                // assume we're in a stock round for now.
+                build_right_side_stock_ui(
+                        &mut commands, ui, &mut players, &mut game_state);
+            }
             // ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
 
             ui.separator();
@@ -671,6 +787,7 @@ pub fn build_right_side_privatecompany_ui(
             {       
                 let pc = PrivateCompany::fromInteger(pc_idx);
                 let price = PrivateCompany::faceValue(pc);
+                let min_bid = minimum_bid_for_pc(game_state, &pc);
 
                 if game_state.private_company_states[pc_idx] ==
                     PrivateCompanyState::Unsold as u32 &&
@@ -685,15 +802,19 @@ pub fn build_right_side_privatecompany_ui(
                     }
                     first_unsold = false;
                 }
-                // Need to compute the minimum new bid.
-                // Need a place for user to input their bid value.
-                // could check to see if we've already bid on this one.
-                if ui.button(format!("Bid at least {} on {:?}",
-                            777, pc)).clicked()
+                if game_state.private_company_states[pc_idx] ==
+                    PrivateCompanyState::HasBids as u32 ||
+                   ( game_state.private_company_states[pc_idx] ==
+                    PrivateCompanyState::Unsold as u32 &&
+                        ! first_unsold )
                 {
-                    place_bid_impl(commands, game_state, players,
-                                current_order, pc, 111);
-                    return;
+                    if ui.button(format!("Bid at least {} on {:?}",
+                                min_bid, pc)).clicked()
+                    {
+                        place_bid_impl(commands, game_state, players,
+                                    current_order, pc, min_bid);
+                        return;
+                    }           
                 }           
                 pc_idx += 1;
             }    
@@ -742,6 +863,79 @@ pub fn build_left_side_privatecompany_ui( ui: &mut Ui,
     }
 }
 
+pub fn build_left_side_stock_ui( ui: &mut Ui,
+                                        mut players: Query<&Player>,
+                                        game_state: & GameState)
+{
+}
+
+
+pub fn build_right_side_stock_ui(
+            commands: &mut Commands,
+            ui: &mut Ui,
+            players: &mut Query<& mut Player>,
+            game_state: & mut GameState)
+{
+    // CURRENT_PLAYER: you can:
+    // ... (lots of stuff)
+
+    // During your turn in a stock round, you may buy an available
+    // certificate from either the initial offering or the bank pool. 
+
+    let Ok(current_player) = players.get(game_state.current_player) else {
+        return;
+    };
+    let current_order = current_player.order;
+    let current_name = current_player.name.clone();
+    let current_money = current_player.assets.personal_money;
+
+    ui.label(format!("{}: you have {} and may:",
+            current_name,
+            current_money));
+
+    egui::ComboBox::from_label("Set Par Value")
+        .selected_text(game_state.current_par_value.name())
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SixtySeven, ParValue::SixtySeven.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SeventyOne, ParValue::SeventyOne.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SeventySix, ParValue::SeventySix.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::EightyTwo, ParValue::EightyTwo.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::Ninety, ParValue::Ninety.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::OneHundred, ParValue::OneHundred.name());
+        });
+
+    let mut rr_idx : usize = 0;
+    while rr_idx < NUM_RAILROADS
+    {
+        let railroad = &game_state.railroads[rr_idx];
+
+        let purchase_options = railroad_purchase_options(
+                current_player, railroad);
+
+        if purchase_options.canBuyPresCert()
+        {
+            let price = 2 * game_state.current_par_value as u32;
+
+            if ui.button(format!("Buy {:?} pres cert for {}",
+                        railroad.short_name, price)).clicked()
+            {
+                buy_railroad_impl(commands, game_state,
+                        current_player, rr_idx,
+                        PurchaseDecision::BuyPresCert);
+                return;
+            }
+        }
+        rr_idx += 1;
+    }
+}
+
+
 pub fn game_state_panel_left(
     mut contexts: EguiContexts,
     players: Query<&Player>,
@@ -772,6 +966,12 @@ pub fn game_state_panel_left(
             if game_state.phase == GamePhase::PurchasePrivateCompanies
             {
                 build_left_side_privatecompany_ui( ui, players, &game_state);
+            }
+            else
+            {
+                // assume we're in a stock round for now.
+                build_left_side_stock_ui(
+                        ui, players, & game_state);
             }
 
         });

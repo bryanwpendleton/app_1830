@@ -164,6 +164,10 @@ pub fn place_bid_impl(
     );
     game_state.private_company_states[pc as usize] = 
                             PrivateCompanyState::HasBids as u32;
+
+    let next_player = ( player_id + 1 ) % game_state.num_players;
+    game_state.current_player =
+                    game_state.player_by_player_id[next_player as usize];
 }
 
 // During the final auction for a PC, you can raise your bid.
@@ -243,10 +247,34 @@ pub fn buy_pc_impl(
             info!("Player {} buys private company {:?} for {}, money now {}",
                 player_id, pc, amount, player.assets.personal_money);
 
-            move_priority_deal_card(commands, game_state,
-                            (player_id + 1) % game_state.num_players);
+            let next_player = ( player_id + 1 ) % game_state.num_players;
+            game_state.current_player =
+                    game_state.player_by_player_id[next_player as usize];
+
+            move_priority_deal_card(commands, game_state, next_player);
+
+            check_if_all_pcs_are_sold(game_state);
         }
     }
+}
+
+fn check_if_all_pcs_are_sold(
+    game_state: &mut GameState )
+{
+    let mut pc_idx: usize = 0;
+    while pc_idx < NUM_PRIVATE_COMPANIES
+    {
+        if game_state.private_company_states[pc_idx] ==
+            PrivateCompanyState::Unsold as u32 ||
+           game_state.private_company_states[pc_idx] ==
+            PrivateCompanyState::HasBids as u32
+        {
+            return;
+        }
+        pc_idx += 1;
+    }
+    // When all private companies are bought, a stock round begins.
+    info!("{}", game_state.advance_phase());
 }
 
 // Moves the PriorityDeal component directly from the current holder to
@@ -273,7 +301,13 @@ pub fn auction_pass_impl(
     players: &mut Query<&mut Player>,
     player_id: u32,
 ) {
-    info!("Auction pass not implemented yet:");
+    let next_player = ( player_id + 1 ) % game_state.num_players;
+    game_state.current_player =
+            game_state.player_by_player_id[next_player as usize];
+
+    game_state.auction_state.num_passes += 1;
+
+    info!("Auction pass completed, next player is {}", next_player);
 }
 
 // This code assumes there was at least one such bid, and returns
@@ -305,6 +339,26 @@ pub fn highest_bid_for_pc(game_state: &GameState, pc: &PrivateCompany)
     (who_won, which_bid)
 }
 
+// Similar to highest_bid_for_pc(), but returns the minimum new bid value
+// instead of the current highest bid value, and also does not assume that
+// at least one bid already exists.
+
+pub fn minimum_bid_for_pc(game_state: &GameState, pc: &PrivateCompany) -> u32
+{
+    let mut result: u32 = PrivateCompany::faceValue(*pc);
+
+    let mut index : usize = 0;
+    while index < game_state.auction_bids.len()
+    {
+        if game_state.auction_bids[index].private_company == *pc &&
+            game_state.auction_bids[index].bid_amount > result
+        {
+            result = game_state.auction_bids[index].bid_amount;
+        }
+        index = index + 1;
+    }
+    (result + 5)
+}
 // If the unsold private company with the lowest face value has at least
 // one bid on it, the buy-bid-turn sequence is paused. If only one
 // player has a bid on the private company, that player buys it

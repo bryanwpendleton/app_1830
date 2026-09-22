@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
+use crate::gamemodel::Player;
+use crate::gamemodel::RailroadCorporation;
 
 /// The stock market records and governs the value of the railroad
 /// corporations’ shares. This stock market is represented by a
@@ -56,6 +58,55 @@ pub struct GridBox
 #[derive(Component)]
 pub struct StockMarketCell {
     pub grid_box: GridBox,
+}
+
+// bit flags for the various choices a particular player might
+// have at this moment about what, if anything, they can buy
+// of a particular RailroadCorporation
+
+pub enum PurchaseOptions
+{
+    CanBuyPresCert = 1,
+}
+impl PurchaseOptions
+{
+    pub fn canBuyPresCert(&self) -> bool
+    {
+        match self
+        {
+            PurchaseOptions::CanBuyPresCert => true,
+        }
+    }
+}
+pub enum PurchaseDecision
+{
+    BuyPresCert,
+}
+
+pub fn railroad_purchase_options(player: & Player,
+                                railroad: & RailroadCorporation)
+                    -> PurchaseOptions
+{
+    return PurchaseOptions::CanBuyPresCert; // stub for now.
+}
+
+pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
+                                player: & Player,
+                                rr_idx: usize,
+                                decision: PurchaseDecision)
+{
+    match decision
+    {
+        PurchaseDecision::BuyPresCert => {
+            // Record the par value
+            // Add the tracking token to the StockMarket grid
+            // Update the player's assets:
+            // - personal_money is reduced by 2x par
+            // - share of corporation is set to 2
+            // Record that this player has bought during this turn, and
+            //   thus can now only sell or pass
+        },
+    }
 }
 
 /// System to initialize the Stock Market grid at game start.
