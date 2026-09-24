@@ -884,7 +884,7 @@ pub fn build_right_side_stock_ui(
     // During your turn in a stock round, you may buy an available
     // certificate from either the initial offering or the bank pool. 
 
-    let Ok(mut current_player) = players.get(game_state.current_player) else {
+    let Ok(mut current_player) = players.get_mut(game_state.current_player) else {
         return;
     };
     let current_order = current_player.order;
@@ -918,7 +918,7 @@ pub fn build_right_side_stock_ui(
         let railroad = &game_state.railroads[rr_idx];
 
         let purchase_options = railroad_purchase_options(
-                current_player, railroad);
+                &current_player, railroad);
 
         if purchase_options.canBuyPresCert()
         {
@@ -928,7 +928,7 @@ pub fn build_right_side_stock_ui(
                         railroad.short_name, price)).clicked()
             {
                 buy_railroad_impl(commands, game_state,
-                        current_player,
+                        &mut current_player,
                         rr_idx,
                         PurchaseDecision::BuyPresCert);
                 return;
