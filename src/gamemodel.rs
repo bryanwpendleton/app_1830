@@ -104,6 +104,7 @@ pub struct PriorityDealCard;
 pub struct MarketState {
     pub passes: u32,
     pub last_buy_sell: u32,
+    pub current_player_has_bought_stock: bool,
 }
 
 // The Railroad Corporations don't have any natural order,
@@ -293,6 +294,7 @@ impl GameState {
             market_state: MarketState {
                 passes: 0,
                 last_buy_sell: 0,
+                current_player_has_bought_stock: false,
             },
 
             private_company_states: [0;6],
@@ -882,7 +884,7 @@ pub fn build_right_side_stock_ui(
     // During your turn in a stock round, you may buy an available
     // certificate from either the initial offering or the bank pool. 
 
-    let Ok(current_player) = players.get(game_state.current_player) else {
+    let Ok(mut current_player) = players.get(game_state.current_player) else {
         return;
     };
     let current_order = current_player.order;
@@ -926,7 +928,8 @@ pub fn build_right_side_stock_ui(
                         railroad.short_name, price)).clicked()
             {
                 buy_railroad_impl(commands, game_state,
-                        current_player, rr_idx,
+                        current_player,
+                        rr_idx,
                         PurchaseDecision::BuyPresCert);
                 return;
             }

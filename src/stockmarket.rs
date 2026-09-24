@@ -91,7 +91,7 @@ pub fn railroad_purchase_options(player: & Player,
 }
 
 pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
-                                player: & Player,
+                                current_player: & mut Player,
                                 rr_idx: usize,
                                 decision: PurchaseDecision)
 {
@@ -105,6 +105,15 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             // - share of corporation is set to 2
             // Record that this player has bought during this turn, and
             //   thus can now only sell or pass
+
+            let railroad = & mut game_state.railroads[rr_idx];
+            railroad.par_value = game_state.current_par_value as u32;
+
+            current_player.assets.personal_money -=
+                    2 * game_state.current_par_value as u32;
+            current_player.assets.corporations[rr_idx] = 2;
+
+            game_state.market_state.current_player_has_bought_stock = true;
         },
     }
 }
