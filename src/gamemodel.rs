@@ -20,6 +20,7 @@ use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
 use crate::stockmarket::railroad_purchase_options;
+use crate::stockmarket::stock_round_pass_impl;
 use crate::stockmarket::buy_railroad_impl;
 use crate::stockmarket::PurchaseDecision;
 use crate::privco::NUM_PRIVATE_COMPANIES;
@@ -105,6 +106,7 @@ pub struct MarketState {
     pub passes: u32,
     pub last_buy_sell: u32,
     pub current_player_has_bought_stock: bool,
+    pub current_player_has_sold_stock: bool,
 }
 
 // The Railroad Corporations don't have any natural order,
@@ -295,6 +297,7 @@ impl GameState {
                 passes: 0,
                 last_buy_sell: 0,
                 current_player_has_bought_stock: false,
+                current_player_has_sold_stock: false,
             },
 
             private_company_states: [0;6],
@@ -935,6 +938,12 @@ pub fn build_right_side_stock_ui(
             }
         }
         rr_idx += 1;
+    }
+    if ui.button("Pass").clicked()
+    {
+        stock_round_pass_impl( commands, game_state,
+                            players, current_order);
+        return;
     }
 }
 

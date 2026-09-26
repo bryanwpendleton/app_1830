@@ -87,6 +87,22 @@ pub fn railroad_purchase_options(player: & Player,
                                 railroad: & RailroadCorporation)
                     -> PurchaseOptions
 {
+    // If the player has already bought stock this turn, then
+    // they can't buy any more stock this turn.
+
+    // If the player is already at their certificate limit, then
+    // they can't buy any more stock this turn.
+
+    // If the railroad does not yet have a par value, then the
+    // the only purchase option is to buy the President's Certificate
+    // and set the par value.
+
+    // Otherwise, 
+    // - the player can buy an ordinary certificate at the par value
+    //   if there are ordinary certificates that have not yet been sold
+    // - the player can buy a certificate at the current market
+    //   value if there are certificates for this railroad in the
+    //   bank pool.
     return PurchaseOptions::CanBuyPresCert; // stub for now.
 }
 
@@ -116,6 +132,27 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             game_state.market_state.current_player_has_bought_stock = true;
         },
     }
+}
+
+pub fn stock_round_pass_impl(
+    commands: &mut Commands,
+    game_state: &mut GameState,
+    players: &mut Query<&mut Player>,
+    player_id: u32,
+) {
+    let next_player = ( player_id + 1 ) % game_state.num_players;
+    game_state.current_player =
+            game_state.player_by_player_id[next_player as usize];
+
+    // Was this a simple pass? Or did the player buy and/or sell stock?
+
+    if ! game_state.market_state.current_player_has_bought_stock &&
+       ! game_state.market_state.current_player_has_sold_stock
+    {
+        game_state.market_state.passes += 1;
+    }
+
+    info!("Stock round moves to next player");
 }
 
 /// System to initialize the Stock Market grid at game start.
