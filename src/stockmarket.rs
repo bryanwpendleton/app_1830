@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
+use crate::gamemodel::Certificate;
 use crate::gamemodel::Player;
 use crate::gamemodel::RailroadCorporation;
 
@@ -66,7 +67,9 @@ pub struct StockMarketCell {
 
 pub enum PurchaseOptions
 {
+    None = 0,
     CanBuyPresCert = 1,
+    CanBuyCert = 2,
 }
 impl PurchaseOptions
 {
@@ -74,28 +77,54 @@ impl PurchaseOptions
     {
         match self
         {
+            PurchaseOptions::None => false,
             PurchaseOptions::CanBuyPresCert => true,
+            PurchaseOptions::CanBuyCert => false,
+        }
+    }
+    pub fn canBuyCert(&self) -> bool
+    {
+        match self
+        {
+            PurchaseOptions::None => false,
+            PurchaseOptions::CanBuyPresCert => false,
+            PurchaseOptions::CanBuyCert => true,
         }
     }
 }
 pub enum PurchaseDecision
 {
     BuyPresCert,
+    BuyCert,
 }
 
-pub fn railroad_purchase_options(player: & Player,
+pub fn railroad_purchase_options(
+                                game_state: & GameState,
+                                player: & Player,
                                 railroad: & RailroadCorporation)
                     -> PurchaseOptions
 {
     // If the player has already bought stock this turn, then
     // they can't buy any more stock this turn.
+    if game_state.market_state.current_player_has_bought_stock
+    {
+        return PurchaseOptions::None;
+    }
 
     // If the player is already at their certificate limit, then
     // they can't buy any more stock this turn.
+    if player.assets.certificates.len() >= game_state.certificate_limit
+    {
+        return PurchaseOptions::None;
+    }
 
     // If the railroad does not yet have a par value, then the
     // the only purchase option is to buy the President's Certificate
     // and set the par value.
+    if railroad.par_value == 0
+    {
+        return PurchaseOptions::CanBuyPresCert;
+    }
 
     // Otherwise, 
     // - the player can buy an ordinary certificate at the par value
@@ -103,7 +132,7 @@ pub fn railroad_purchase_options(player: & Player,
     // - the player can buy a certificate at the current market
     //   value if there are certificates for this railroad in the
     //   bank pool.
-    return PurchaseOptions::CanBuyPresCert; // stub for now.
+    return PurchaseOptions::CanBuyCert; // XXX
 }
 
 pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
@@ -115,7 +144,7 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
     {
         PurchaseDecision::BuyPresCert => {
             // Record the par value
-            // Add the tracking token to the StockMarket grid
+            // Add the tracking token to the StockMarket grid XXX
             // Update the player's assets:
             // - personal_money is reduced by 2x par
             // - share of corporation is set to 2
@@ -128,6 +157,26 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             current_player.assets.personal_money -=
                     2 * game_state.current_par_value as u32;
             current_player.assets.corporations[rr_idx] = 2;
+            current_player.assets.certificates.push(
+               Certificate::presidents_certificate(rr_idx));
+
+            game_state.market_state.current_player_has_bought_stock = true;
+        },
+        PurchaseDecision::BuyCert => {
+            // Update the player's assets:
+            // - personal_money is reduced by par
+            // - share of corporation is increased by 1
+            // Record that this player has bought during this turn, and
+            //   thus can now only sell or pass
+
+            let railroad = & mut game_state.railroads[rr_idx];
+            railroad.par_value = game_state.current_par_value as u32;
+
+            current_player.assets.personal_money -=
+                    game_state.current_par_value as u32;
+            current_player.assets.corporations[rr_idx] += 1;
+            current_player.assets.certificates.push(
+               Certificate::certificate(rr_idx));
 
             game_state.market_state.current_player_has_bought_stock = true;
         },
@@ -151,6 +200,9 @@ pub fn stock_round_pass_impl(
     {
         game_state.market_state.passes += 1;
     }
+
+    game_state.market_state.current_player_has_bought_stock = false;
+    game_state.market_state.current_player_has_sold_stock = false;
 
     info!("Stock round moves to next player");
 }

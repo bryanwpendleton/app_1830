@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
+use crate::gamemodel::Certificate;
 use crate::gamemodel::Player;
 use crate::gamemodel::PrivateCompany;
 use crate::gamemodel::PriorityDealCard;
@@ -240,6 +241,8 @@ pub fn buy_pc_impl(
         {
             player.assets.personal_money -= amount;
             player.assets.private_companies[pc as usize] = 1;
+            player.assets.certificates.push(
+                Certificate::private_company_certificate(pc as usize));
 
             game_state.private_company_states[pc as usize] =
                 PrivateCompanyState::OwnedByPlayer as u32 + player_id;

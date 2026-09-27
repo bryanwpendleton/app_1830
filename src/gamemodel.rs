@@ -46,9 +46,22 @@ use crate::privco::minimum_bid_for_pc;
 // - personal money
 // - shares of railroad corporations
 // - private companies (usually closed by end of game)
+//
+// We track each player's certificates individually, and
+// we also track their ownership of each of the companies.
+// So for example if you own:
+// - The Delaware & Hudson
+// - 40% of the Canadian Pacific, including the presidency
+// - 20% of the Pennsylvania
+// we track 5 certificates: C_DH,C_PC_CPR,C_CPR,C_CPR,C_PRR,C_PRR
+// we track a 4 in corporations[CanadianPacific]
+// we track a 2 in corporations[Pennsylvania]
+// we track a 1 in private_companies[DelawareAndHudson]
+// 
 
 pub struct PlayerAssets {
     pub personal_money: u32,
+    pub certificates: Vec<Certificate>,
     pub corporations: [u32;8], // Indexed by Corporation enum
     pub private_companies: [u32;6], // Indexed by PrivateCompany enum
 }
@@ -96,6 +109,130 @@ pub struct PriorityDealCard;
 // try to buy shares in corporations that are rising in value, earn
 // dividends while you can, and sell first when your money could
 // be better used elsewhere. 
+
+// As with any stock exchange, certificates are used in 1830 to
+// represent each player’s ownership in the private companies
+// and public railroad corporations. For a private company, a
+// single certificate represents 100% ownership in the company.
+// For a corporation, a single certificate represents 10% or 20%
+// ownership. The president’s certificate in a corporation is two
+// shares (20%), but counts as a single certificate.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Certificate {
+
+    C_SV, // SchuykillValley
+    C_CS, // ChamplainAndStLawrence
+    C_DH, // DelawareAndHudson
+    C_MH, // MohawkAndHudson
+    C_CA, // CamdenAndAmboy
+    C_BO, // BaltimoreAndOhio
+
+    C_PC_PRR, // Pennsylvania
+    C_PRR,
+    C_PC_NYC, // NewYorkCentral
+    C_NYC,
+    C_PC_CPR, // CanadianPacific
+    C_CPR,
+    C_PC_BnO, // BaltimoreAndOhio
+    C_BnO,
+    C_PC_CnO, // ChesapeakeAndOhio
+    C_CnO,
+    C_PC_ERIE, // Erie
+    C_ERIE,
+    C_PC_NNH, // NewYorkNewHavenAndHartford
+    C_NNH,
+    C_PC_BnM, // BostonAndMaine
+    C_BnM,
+
+    Unknown,
+}
+impl Certificate
+{
+    pub fn certificate_limit(num_players: u32) -> usize
+    {
+        match num_players
+        {
+            2 => 28,
+            3 => 20,
+            4 => 16,
+            5 => 13,
+            6 => 11,
+            _ => 0,
+        }
+    }
+
+    pub fn presidents_certificate(rr_idx: usize) -> Certificate
+    {
+        const PRR  : usize = Railroad::Pennsylvania as usize;
+        const NYC  : usize = Railroad::NewYorkCentral as usize;
+        const CPR  : usize = Railroad::CanadianPacific as usize;
+        const BNO  : usize = Railroad::BaltimoreAndOhio as usize;
+        const CNO  : usize = Railroad::ChesapeakeAndOhio as usize;
+        const ERIE : usize = Railroad::Erie as usize;
+        const NNH  : usize = Railroad::NewYorkNewHavenAndHartford as usize;
+        const BNM  : usize = Railroad::BostonAndMaine as usize;
+
+        match rr_idx
+        {
+            PRR => Certificate::C_PC_PRR,
+            NYC => Certificate::C_PC_NYC,
+            CPR => Certificate::C_PC_CPR,
+            BNO => Certificate::C_PC_BnO,
+            CNO => Certificate::C_PC_CnO,
+            ERIE => Certificate::C_PC_ERIE,
+            NNH => Certificate::C_PC_NNH,
+            BNM => Certificate::C_PC_BnM,
+            _ => Certificate::Unknown,
+        }
+    }
+
+    pub fn certificate(rr_idx: usize) -> Certificate
+    {
+        const PRR  : usize = Railroad::Pennsylvania as usize;
+        const NYC  : usize = Railroad::NewYorkCentral as usize;
+        const CPR  : usize = Railroad::CanadianPacific as usize;
+        const BNO  : usize = Railroad::BaltimoreAndOhio as usize;
+        const CNO  : usize = Railroad::ChesapeakeAndOhio as usize;
+        const ERIE : usize = Railroad::Erie as usize;
+        const NNH  : usize = Railroad::NewYorkNewHavenAndHartford as usize;
+        const BNM  : usize = Railroad::BostonAndMaine as usize;
+
+        match rr_idx
+        {
+            PRR => Certificate::C_PRR,
+            NYC => Certificate::C_NYC,
+            CPR => Certificate::C_CPR,
+            BNO => Certificate::C_BnO,
+            CNO => Certificate::C_CnO,
+            ERIE => Certificate::C_ERIE,
+            NNH => Certificate::C_NNH,
+            BNM => Certificate::C_BnM,
+            _ => Certificate::Unknown,
+        }
+    }
+
+    pub fn private_company_certificate(pc_idx: usize) -> Certificate
+    {
+        const SV : usize = PrivateCompany::SchuykillValley as usize;
+        const CSL : usize = PrivateCompany::ChamplainAndStLawrence as usize;
+        const DNH : usize = PrivateCompany::DelawareAndHudson as usize;
+        const MNH : usize = PrivateCompany::MohawkAndHudson as usize;
+        const CNA : usize = PrivateCompany::CamdenAndAmboy as usize;
+        const BNO : usize = PrivateCompany::BaltimoreAndOhio as usize;
+
+        match pc_idx
+        {
+            SV => Certificate::C_SV,
+            CSL => Certificate::C_CS,
+            DNH => Certificate::C_DH,
+            MNH => Certificate::C_MH,
+            CNA => Certificate::C_CA,
+            BNO => Certificate::C_BO,
+            _ => Certificate::Unknown,
+        }
+    }
+}
 
 /// Tracking when a Stock Round is over:
 /// - when a player passes, passes is incremented
@@ -242,6 +379,7 @@ pub struct GameState {
     pub phase: GamePhase,
     pub bank: u32,
     pub num_players: u32, // 2-6
+    pub certificate_limit: usize, // varies depending on num_players
 
     pub priority_deal_card_holder : Entity,
     pub current_player : Entity,
@@ -289,6 +427,7 @@ impl GameState {
             phase: GamePhase::PurchasePrivateCompanies,
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
+            certificate_limit: 0,
             priority_deal_card_holder : Entity::PLACEHOLDER,
             current_player : Entity::PLACEHOLDER,
             player_by_player_id : [Entity::PLACEHOLDER;6],
@@ -869,9 +1008,26 @@ pub fn build_left_side_privatecompany_ui( ui: &mut Ui,
 }
 
 pub fn build_left_side_stock_ui( ui: &mut Ui,
-                                        mut players: Query<&Player>,
+                                        players: Query<&Player>,
                                         game_state: & GameState)
 {
+    let Ok(current_player) = players.get(game_state.current_player) else {
+        return;
+    };
+    let current_order = current_player.order;
+    let current_name = current_player.name.clone();
+    let current_money = current_player.assets.personal_money;
+    let current_num_certs = current_player.assets.certificates.len();
+
+    ui.label(format!("{}: you have {} and {} certificates:",
+            current_name,
+            current_money,
+            current_num_certs));
+
+    for c in current_player.assets.certificates.clone()
+    {
+        ui.label(format!("{:?}", c));
+    }
 }
 
 
@@ -919,21 +1075,36 @@ pub fn build_right_side_stock_ui(
     while rr_idx < NUM_RAILROADS
     {
         let railroad = &game_state.railroads[rr_idx];
+        let short_name = railroad.short_name.clone();
 
         let purchase_options = railroad_purchase_options(
-                &current_player, railroad);
+                game_state, &current_player, railroad);
 
         if purchase_options.canBuyPresCert()
         {
             let price = 2 * game_state.current_par_value as u32;
 
             if ui.button(format!("Buy {:?} pres cert for {}",
-                        railroad.short_name, price)).clicked()
+                        short_name, price)).clicked()
             {
                 buy_railroad_impl(commands, game_state,
                         &mut current_player,
                         rr_idx,
                         PurchaseDecision::BuyPresCert);
+                return;
+            }
+        }
+        if purchase_options.canBuyCert()
+        {
+            let price = game_state.current_par_value as u32;
+
+            if ui.button(format!("Buy {:?} cert for {}",
+                        short_name, price)).clicked()
+            {
+                buy_railroad_impl(commands, game_state,
+                        &mut current_player,
+                        rr_idx,
+                        PurchaseDecision::BuyCert);
                 return;
             }
         }
@@ -1012,6 +1183,7 @@ pub fn create_players(commands: &mut Commands,
     let mut player_order = 0;
 
     game_state.num_players = num_players;
+    game_state.certificate_limit = Certificate::certificate_limit(num_players);
 
     for name in names {
         let nmclone = name.clone();
@@ -1021,6 +1193,7 @@ pub fn create_players(commands: &mut Commands,
                 order: player_order,
                 assets: PlayerAssets {
                     personal_money: starting_money,
+                    certificates : Vec::new(),
                     corporations: [0; 8],
                     private_companies: [0; 6],
                 },
