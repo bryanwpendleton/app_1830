@@ -1,10 +1,15 @@
+use std::cmp::Ordering;
+
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
 use crate::gamemodel::Certificate;
+use crate::gamemodel::OperatingRailroad;
 use crate::gamemodel::Player;
 use crate::gamemodel::RailroadCorporation;
+use crate::gamemodel::RoundState;
+use crate::gamemodel::NUM_RAILROADS;
 
 /// The stock market records and governs the value of the railroad
 /// corporations’ shares. This stock market is represented by a
@@ -48,6 +53,8 @@ enum GridBoxColor {
 pub struct GridBox
 {
     name: String,
+    row: u32,
+    column: u32,
     color: GridBoxColor,
     value: u32,
     up: String,
@@ -59,6 +66,18 @@ pub struct GridBox
 #[derive(Component)]
 pub struct StockMarketCell {
     pub grid_box: GridBox,
+}
+
+// The ShareValueToken records the corporation's current share value
+// by recording a position in the Stock Market grid. The tracking of
+// multiple tokens in the same GridBox is managed by the z_order field:
+// the top of the stack has the lowest z_order field and the bottom
+// of the stack has the highest z_order field.
+
+pub struct ShareValueToken
+{
+    pub grid_box: String,
+    pub z_order: u32,
 }
 
 // bit flags for the various choices a particular player might
@@ -135,6 +154,89 @@ pub fn railroad_purchase_options(
     return PurchaseOptions::CanBuyCert; // XXX
 }
 
+// A railroad is floated if it has 4 or fewer certificates still unsold
+
+pub fn check_if_floated(commands: & Commands, game_state: & mut GameState,
+                                players: &mut Query<& mut Player>,
+                                rr_idx: usize)
+{
+    let mut railroad = & mut game_state.railroads[rr_idx];
+
+    if railroad.floated
+    {
+        return;
+    }
+    if railroad.certificates_remaining <= 4
+    {
+        railroad.assets.stations = railroad.num_stations;
+        railroad.assets.corporation_money = 10 * railroad.par_value;
+        railroad.floated = true;
+        place_share_value_token(game_state, rr_idx);
+        return;
+    }
+}
+
+pub fn get_max_zorder(game_state: & GameState,
+                                start_pos : &str,
+                                this_rr: usize) -> u32
+{
+    let mut result : u32 = 0;
+    let mut rr_idx : usize = 0;
+    while rr_idx < NUM_RAILROADS
+    {
+        if rr_idx == this_rr
+        {
+            continue;
+        }
+        let railroad = &game_state.railroads[rr_idx];
+        if railroad.floated
+        {
+            if railroad.assets.share_value_token.grid_box == start_pos
+            {
+                if railroad.assets.share_value_token.z_order > result
+                {
+                    result = railroad.assets.share_value_token.z_order
+                }
+            }
+        }
+        rr_idx += 1;
+    }
+    return result;
+}
+
+// Place the corporation’s share value token in a light green grid
+// box on the stock market corresponding to the share value. If
+// the token is placed into a grid box already containing one or
+// more tokens, the newly arriving token is placed at the bottom
+// of the stack of share value tokens that are already there. 
+
+pub fn place_share_value_token(game_state: & mut GameState,
+                                rr_idx: usize)
+{
+    let railroad = & game_state.railroads[rr_idx];
+
+    let start_pos = match railroad.par_value
+    {
+        67  => "67F",
+        71  => "71E",
+        76  => "76D",
+        82  => "82C",
+        90  => "90B",
+        100 => "100A",
+        _   => "40K",
+    };
+    let z_order = get_max_zorder(& game_state,
+                                start_pos,
+                                rr_idx);
+        
+
+    let mut rr_mut = & mut game_state.railroads[rr_idx];
+    rr_mut.assets.share_value_token = ShareValueToken {
+                                        grid_box: start_pos.to_string(),
+                                        z_order: z_order,
+    };
+}
+
 pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
                                 current_player: & mut Player,
                                 rr_idx: usize,
@@ -154,8 +256,9 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             let railroad = & mut game_state.railroads[rr_idx];
             railroad.par_value = game_state.current_par_value as u32;
 
-            current_player.assets.personal_money -=
-                    2 * game_state.current_par_value as u32;
+            let price = 2 * game_state.current_par_value as u32;
+            current_player.assets.personal_money -= price;
+            game_state.bank += price;
             current_player.assets.corporations[rr_idx] = 2;
             current_player.assets.certificates.push(
                Certificate::presidents_certificate(rr_idx));
@@ -172,8 +275,9 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             let railroad = & mut game_state.railroads[rr_idx];
             railroad.par_value = game_state.current_par_value as u32;
 
-            current_player.assets.personal_money -=
-                    game_state.current_par_value as u32;
+            let price = game_state.current_par_value as u32;
+            current_player.assets.personal_money -= price;
+            game_state.bank += price;
             current_player.assets.corporations[rr_idx] += 1;
             current_player.assets.certificates.push(
                Certificate::certificate(rr_idx));
@@ -199,12 +303,93 @@ pub fn stock_round_pass_impl(
        ! game_state.market_state.current_player_has_sold_stock
     {
         game_state.market_state.passes += 1;
+        if game_state.market_state.passes == game_state.num_players
+        {
+            commands.set_state(RoundState::OperatingRound);
+        }
+    }
+    else
+    {
+        game_state.market_state.passes = 0;
     }
 
     game_state.market_state.current_player_has_bought_stock = false;
     game_state.market_state.current_player_has_sold_stock = false;
 
     info!("Stock round moves to next player");
+}
+
+// compare_operating_order: custom sort function to establish the order
+// of play for the various railroads in an Operating Round
+//
+// In an operating round, each railroad corporation (or just railroad)
+// that has floated takes a turn. The railroad with the
+// highest share value takes the first turn and then the next highest
+// valued railroad takes its turn, and so on until each floated
+// railroad has had a turn.
+//
+// Sometimes the share value tokens of 2 or more floated
+// railroads are in the same grid block of the stock market. In
+// this case, the railroad whose token is on top takes a turn
+// first, then the railroad with the next token down, and so on.
+//
+// If 2 or more floated railroads have the same share value
+// but their share value tokens are in different columns, the
+// railroad whose token is furthest to the right takes a turn
+// first.
+//
+// If 2 or more floated railroads have the same share value and
+// their share value tokens are in the same column, the railroad
+// whose token is furthest up takes a turn first.
+
+fn compare_operating_order( a: &OperatingRailroad, b: & OperatingRailroad)
+            -> Ordering
+{
+    let mut result = b.grid_position.value.cmp(&a.grid_position.value);
+    if result != Ordering::Equal
+    {
+        return result;
+    }
+    result = b.grid_position.name.cmp(&a.grid_position.name);
+    if result == Ordering::Equal
+    {
+        return b.z_order.cmp(&a.z_order);
+    }
+    if b.grid_position.column != a.grid_position.column
+    {
+        return b.grid_position.column.cmp(&a.grid_position.column);
+    }
+    return b.grid_position.row.cmp(&a.grid_position.row);
+}
+
+pub fn set_operating_order(
+    game_state: &mut GameState,
+    players: &mut Query<&mut Player>, )
+{
+    game_state.operating_state.order = Vec::new();
+
+    let mut rr_idx : usize = 0;
+    while rr_idx < NUM_RAILROADS
+    {
+        let railroad = &game_state.railroads[rr_idx];
+
+        if railroad.floated
+        {
+            let grid_position = 
+                game_state.market[&railroad.assets.share_value_token.grid_box].
+                    clone();
+            let z_order = railroad.assets.share_value_token.z_order;
+            let value = grid_position.value;
+
+            game_state.operating_state.order.push(
+                OperatingRailroad
+                {
+                    grid_position: grid_position,
+                    z_order: z_order,
+                });
+        }
+    }
+    game_state.operating_state.order.sort_by(compare_operating_order);
 }
 
 /// System to initialize the Stock Market grid at game start.
@@ -223,6 +408,8 @@ pub fn initialize_stock_market(
         String::from("60A"),
         GridBox {
             name: String::from("60A"),
+            row: 1,
+            column: 1,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("60A"),
@@ -234,6 +421,8 @@ pub fn initialize_stock_market(
         String::from("67A"),
         GridBox {
             name: String::from("67A"),
+            row: 1,
+            column: 2,
             color: GridBoxColor::Clear,
             value: 67,
             up: String::from("67A"),
@@ -245,6 +434,8 @@ pub fn initialize_stock_market(
         String::from("71A"),
         GridBox {
             name: String::from("71A"),
+            row: 1,
+            column: 3,
             color: GridBoxColor::Clear,
             value: 71,
             up: String::from("71A"),
@@ -256,6 +447,8 @@ pub fn initialize_stock_market(
         String::from("76A"),
         GridBox {
             name: String::from("76A"),
+            row: 1,
+            column: 4,
             color: GridBoxColor::Clear,
             value: 76,
             up: String::from("76A"),
@@ -267,6 +460,8 @@ pub fn initialize_stock_market(
         String::from("82A"),
         GridBox {
             name: String::from("82A"),
+            row: 1,
+            column: 5,
             color: GridBoxColor::Clear,
             value: 82,
             up: String::from("82A"),
@@ -278,6 +473,8 @@ pub fn initialize_stock_market(
         String::from("90A"),
         GridBox {
             name: String::from("90A"),
+            row: 1,
+            column: 1,
             color: GridBoxColor::Clear,
             value: 90,
             up: String::from("90A"),
@@ -289,6 +486,8 @@ pub fn initialize_stock_market(
         String::from("100A"),
         GridBox {
             name: String::from("100A"),
+            row: 1,
+            column: 7,
             color: GridBoxColor::Red,
             value: 100,
             up: String::from("100A"),
@@ -300,6 +499,8 @@ pub fn initialize_stock_market(
         String::from("112A"),
         GridBox {
             name: String::from("112A"),
+            row: 1,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 112,
             up: String::from("112A"),
@@ -311,6 +512,8 @@ pub fn initialize_stock_market(
         String::from("126A"),
         GridBox {
             name: String::from("126A"),
+            row: 1,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 126,
             up: String::from("126A"),
@@ -322,6 +525,8 @@ pub fn initialize_stock_market(
         String::from("142A"),
         GridBox {
             name: String::from("142A"),
+            row: 1,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 142,
             up: String::from("142A"),
@@ -333,6 +538,8 @@ pub fn initialize_stock_market(
         String::from("160A"),
         GridBox {
             name: String::from("160A"),
+            row: 1,
+            column: 11,
             color: GridBoxColor::Clear,
             value: 160,
             up: String::from("160A"),
@@ -344,6 +551,8 @@ pub fn initialize_stock_market(
         String::from("180A"),
         GridBox {
             name: String::from("180A"),
+            row: 1,
+            column: 12,
             color: GridBoxColor::Clear,
             value: 180,
             up: String::from("180A"),
@@ -355,6 +564,8 @@ pub fn initialize_stock_market(
         String::from("200A"),
         GridBox {
             name: String::from("200A"),
+            row: 1,
+            column: 13,
             color: GridBoxColor::Clear,
             value: 200,
             up: String::from("200A"),
@@ -366,6 +577,8 @@ pub fn initialize_stock_market(
         String::from("225A"),
         GridBox {
             name: String::from("225A"),
+            row: 1,
+            column: 14,
             color: GridBoxColor::Clear,
             value: 225,
             up: String::from("225A"),
@@ -377,6 +590,8 @@ pub fn initialize_stock_market(
         String::from("250A"),
         GridBox {
             name: String::from("250A"),
+            row: 1,
+            column: 15,
             color: GridBoxColor::Clear,
             value: 250,
             up: String::from("250A"),
@@ -388,6 +603,8 @@ pub fn initialize_stock_market(
         String::from("275A"),
         GridBox {
             name: String::from("275A"),
+            row: 1,
+            column: 16,
             color: GridBoxColor::Clear,
             value: 275,
             up: String::from("275A"),
@@ -399,6 +616,8 @@ pub fn initialize_stock_market(
         String::from("300A"),
         GridBox {
             name: String::from("300A"),
+            row: 1,
+            column: 17,
             color: GridBoxColor::Clear,
             value: 300,
             up: String::from("300A"),
@@ -410,6 +629,8 @@ pub fn initialize_stock_market(
         String::from("325A"),
         GridBox {
             name: String::from("325A"),
+            row: 1,
+            column: 18,
             color: GridBoxColor::Clear,
             value: 325,
             up: String::from("325A"),
@@ -421,6 +642,8 @@ pub fn initialize_stock_market(
         String::from("350A"),
         GridBox {
             name: String::from("350A"),
+            row: 1,
+            column: 19,
             color: GridBoxColor::Clear,
             value: 350,
             up: String::from("350A"),
@@ -435,6 +658,8 @@ pub fn initialize_stock_market(
         String::from("53B"),
         GridBox {
             name: String::from("53B"),
+            row: 2,
+            column: 1,
             color: GridBoxColor::Yellow,
             value: 53,
             up: String::from("60A"),
@@ -446,6 +671,8 @@ pub fn initialize_stock_market(
         String::from("60B"),
         GridBox {
             name: String::from("60B"),
+            row: 2,
+            column: 2,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("67A"),
@@ -457,6 +684,8 @@ pub fn initialize_stock_market(
         String::from("66B"),
         GridBox {
             name: String::from("66B"),
+            row: 2,
+            column: 3,
             color: GridBoxColor::Clear,
             value: 66,
             up: String::from("71A"),
@@ -468,6 +697,8 @@ pub fn initialize_stock_market(
         String::from("70B"),
         GridBox {
             name: String::from("70B"),
+            row: 2,
+            column: 4,
             color: GridBoxColor::Clear,
             value: 70,
             up: String::from("76A"),
@@ -479,6 +710,8 @@ pub fn initialize_stock_market(
         String::from("76B"),
         GridBox {
             name: String::from("76B"),
+            row: 2,
+            column: 5,
             color: GridBoxColor::Clear,
             value: 76,
             up: String::from("82A"),
@@ -490,6 +723,8 @@ pub fn initialize_stock_market(
         String::from("82B"),
         GridBox {
             name: String::from("82B"),
+            row: 2,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 82,
             up: String::from("90A"),
@@ -501,6 +736,8 @@ pub fn initialize_stock_market(
         String::from("90B"),
         GridBox {
             name: String::from("90B"),
+            row: 2,
+            column: 7,
             color: GridBoxColor::Red,
             value: 90,
             up: String::from("100A"),
@@ -512,6 +749,8 @@ pub fn initialize_stock_market(
         String::from("100B"),
         GridBox {
             name: String::from("100B"),
+            row: 2,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 100,
             up: String::from("112A"),
@@ -523,6 +762,8 @@ pub fn initialize_stock_market(
         String::from("112B"),
         GridBox {
             name: String::from("112B"),
+            row: 2,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 112,
             up: String::from("126A"),
@@ -534,6 +775,8 @@ pub fn initialize_stock_market(
         String::from("126B"),
         GridBox {
             name: String::from("126B"),
+            row: 2,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 126,
             up: String::from("142A"),
@@ -545,6 +788,8 @@ pub fn initialize_stock_market(
         String::from("142B"),
         GridBox {
             name: String::from("142B"),
+            row: 2,
+            column: 11,
             color: GridBoxColor::Clear,
             value: 142,
             up: String::from("160A"),
@@ -556,6 +801,8 @@ pub fn initialize_stock_market(
         String::from("160B"),
         GridBox {
             name: String::from("160B"),
+            row: 2,
+            column: 12,
             color: GridBoxColor::Clear,
             value: 160,
             up: String::from("180A"),
@@ -567,6 +814,8 @@ pub fn initialize_stock_market(
         String::from("180B"),
         GridBox {
             name: String::from("180B"),
+            row: 2,
+            column: 13,
             color: GridBoxColor::Clear,
             value: 180,
             up: String::from("200A"),
@@ -578,6 +827,8 @@ pub fn initialize_stock_market(
         String::from("200B"),
         GridBox {
             name: String::from("200B"),
+            row: 2,
+            column: 14,
             color: GridBoxColor::Clear,
             value: 200,
             up: String::from("225A"),
@@ -589,6 +840,8 @@ pub fn initialize_stock_market(
         String::from("220B"),
         GridBox {
             name: String::from("220B"),
+            row: 2,
+            column: 15,
             color: GridBoxColor::Clear,
             value: 220,
             up: String::from("250A"),
@@ -600,6 +853,8 @@ pub fn initialize_stock_market(
         String::from("240B"),
         GridBox {
             name: String::from("240B"),
+            row: 2,
+            column: 16,
             color: GridBoxColor::Clear,
             value: 240,
             up: String::from("275A"),
@@ -611,6 +866,8 @@ pub fn initialize_stock_market(
         String::from("260B"),
         GridBox {
             name: String::from("260B"),
+            row: 2,
+            column: 17,
             color: GridBoxColor::Clear,
             value: 260,
             up: String::from("300A"),
@@ -622,6 +879,8 @@ pub fn initialize_stock_market(
         String::from("280B"),
         GridBox {
             name: String::from("280B"),
+            row: 2,
+            column: 18,
             color: GridBoxColor::Clear,
             value: 280,
             up: String::from("325A"),
@@ -633,6 +892,8 @@ pub fn initialize_stock_market(
         String::from("300B"),
         GridBox {
             name: String::from("300B"),
+            row: 2,
+            column: 19,
             color: GridBoxColor::Clear,
             value: 300,
             up: String::from("350A"),
@@ -647,6 +908,8 @@ pub fn initialize_stock_market(
         String::from("46C"),
         GridBox {
             name: String::from("46C"),
+            row: 3,
+            column: 1,
             color: GridBoxColor::Yellow,
             value: 46,
             up: String::from("53B"),
@@ -658,6 +921,8 @@ pub fn initialize_stock_market(
         String::from("55C"),
         GridBox {
             name: String::from("55C"),
+            row: 3,
+            column: 2,
             color: GridBoxColor::Yellow,
             value: 55,
             up: String::from("60B"),
@@ -669,6 +934,8 @@ pub fn initialize_stock_market(
         String::from("60C"),
         GridBox {
             name: String::from("60C"),
+            row: 3,
+            column: 3,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("66B"),
@@ -680,6 +947,8 @@ pub fn initialize_stock_market(
         String::from("65C"),
         GridBox {
             name: String::from("65C"),
+            row: 3,
+            column: 4,
             color: GridBoxColor::Clear,
             value: 65,
             up: String::from("70B"),
@@ -691,6 +960,8 @@ pub fn initialize_stock_market(
         String::from("70C"),
         GridBox {
             name: String::from("70C"),
+            row: 3,
+            column: 5,
             color: GridBoxColor::Clear,
             value: 70,
             up: String::from("76B"),
@@ -702,6 +973,8 @@ pub fn initialize_stock_market(
         String::from("76C"),
         GridBox {
             name: String::from("76C"),
+            row: 3,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 76,
             up: String::from("82B"),
@@ -713,6 +986,8 @@ pub fn initialize_stock_market(
         String::from("82C"),
         GridBox {
             name: String::from("82C"),
+            row: 3,
+            column: 7,
             color: GridBoxColor::Red,
             value: 82,
             up: String::from("90B"),
@@ -724,6 +999,8 @@ pub fn initialize_stock_market(
         String::from("90C"),
         GridBox {
             name: String::from("90C"),
+            row: 3,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 90,
             up: String::from("100B"),
@@ -735,6 +1012,8 @@ pub fn initialize_stock_market(
         String::from("100C"),
         GridBox {
             name: String::from("100C"),
+            row: 3,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 100,
             up: String::from("112B"),
@@ -746,6 +1025,8 @@ pub fn initialize_stock_market(
         String::from("111C"),
         GridBox {
             name: String::from("111C"),
+            row: 3,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 111,
             up: String::from("126B"),
@@ -757,6 +1038,8 @@ pub fn initialize_stock_market(
         String::from("125C"),
         GridBox {
             name: String::from("125C"),
+            row: 3,
+            column: 11,
             color: GridBoxColor::Clear,
             value: 125,
             up: String::from("142B"),
@@ -768,6 +1051,8 @@ pub fn initialize_stock_market(
         String::from("140C"),
         GridBox {
             name: String::from("140C"),
+            row: 3,
+            column: 12,
             color: GridBoxColor::Clear,
             value: 140,
             up: String::from("160B"),
@@ -779,6 +1064,8 @@ pub fn initialize_stock_market(
         String::from("155C"),
         GridBox {
             name: String::from("155C"),
+            row: 3,
+            column: 13,
             color: GridBoxColor::Clear,
             value: 155,
             up: String::from("180B"),
@@ -790,6 +1077,8 @@ pub fn initialize_stock_market(
         String::from("170C"),
         GridBox {
             name: String::from("170C"),
+            row: 3,
+            column: 14,
             color: GridBoxColor::Clear,
             value: 170,
             up: String::from("200B"),
@@ -801,6 +1090,8 @@ pub fn initialize_stock_market(
         String::from("185C"),
         GridBox {
             name: String::from("185C"),
+            row: 3,
+            column: 15,
             color: GridBoxColor::Clear,
             value: 185,
             up: String::from("220B"),
@@ -812,6 +1103,8 @@ pub fn initialize_stock_market(
         String::from("200C"),
         GridBox {
             name: String::from("200C"),
+            row: 3,
+            column: 16,
             color: GridBoxColor::Clear,
             value: 200,
             up: String::from("240B"),
@@ -826,6 +1119,8 @@ pub fn initialize_stock_market(
         String::from("39D"),
         GridBox {
             name: String::from("39D"),
+            row: 4,
+            column: 1,
             color: GridBoxColor::Orange,
             value: 39,
             up: String::from("46C"),
@@ -837,6 +1132,8 @@ pub fn initialize_stock_market(
         String::from("48D"),
         GridBox {
             name: String::from("48D"),
+            row: 4,
+            column: 2,
             color: GridBoxColor::Yellow,
             value: 48,
             up: String::from("55C"),
@@ -848,6 +1145,8 @@ pub fn initialize_stock_market(
         String::from("54D"),
         GridBox {
             name: String::from("54D"),
+            row: 4,
+            column: 3,
             color: GridBoxColor::Yellow,
             value: 54,
             up: String::from("60C"),
@@ -859,6 +1158,8 @@ pub fn initialize_stock_market(
         String::from("60D"),
         GridBox {
             name: String::from("60D"),
+            row: 4,
+            column: 4,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("65C"),
@@ -870,6 +1171,8 @@ pub fn initialize_stock_market(
         String::from("66D"),
         GridBox {
             name: String::from("66D"),
+            row: 4,
+            column: 5,
             color: GridBoxColor::Clear,
             value: 66,
             up: String::from("70C"),
@@ -881,6 +1184,8 @@ pub fn initialize_stock_market(
         String::from("71D"),
         GridBox {
             name: String::from("71D"),
+            row: 4,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 71,
             up: String::from("76C"),
@@ -892,6 +1197,8 @@ pub fn initialize_stock_market(
         String::from("76D"),
         GridBox {
             name: String::from("76D"),
+            row: 4,
+            column: 7,
             color: GridBoxColor::Red,
             value: 76,
             up: String::from("82C"),
@@ -903,6 +1210,8 @@ pub fn initialize_stock_market(
         String::from("82D"),
         GridBox {
             name: String::from("82D"),
+            row: 4,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 82,
             up: String::from("90C"),
@@ -914,6 +1223,8 @@ pub fn initialize_stock_market(
         String::from("90D"),
         GridBox {
             name: String::from("90D"),
+            row: 4,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 90,
             up: String::from("100C"),
@@ -925,6 +1236,8 @@ pub fn initialize_stock_market(
         String::from("100D"),
         GridBox {
             name: String::from("100D"),
+            row: 4,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 100,
             up: String::from("111C"),
@@ -936,6 +1249,8 @@ pub fn initialize_stock_market(
         String::from("110D"),
         GridBox {
             name: String::from("110D"),
+            row: 4,
+            column: 11,
             color: GridBoxColor::Clear,
             value: 110,
             up: String::from("125C"),
@@ -947,6 +1262,8 @@ pub fn initialize_stock_market(
         String::from("120D"),
         GridBox {
             name: String::from("120D"),
+            row: 4,
+            column: 12,
             color: GridBoxColor::Clear,
             value: 120,
             up: String::from("140C"),
@@ -958,6 +1275,8 @@ pub fn initialize_stock_market(
         String::from("130D"),
         GridBox {
             name: String::from("130D"),
+            row: 4,
+            column: 13,
             color: GridBoxColor::Clear,
             value: 130,
             up: String::from("155C"),
@@ -972,6 +1291,8 @@ pub fn initialize_stock_market(
         String::from("32E"),
         GridBox {
             name: String::from("32E"),
+            row: 5,
+            column: 1,
             color: GridBoxColor::Orange,
             value: 32,
             up: String::from("39D"),
@@ -983,6 +1304,8 @@ pub fn initialize_stock_market(
         String::from("41E"),
         GridBox {
             name: String::from("41E"),
+            row: 5,
+            column: 2,
             color: GridBoxColor::Orange,
             value: 41,
             up: String::from("48D"),
@@ -994,6 +1317,8 @@ pub fn initialize_stock_market(
         String::from("48E"),
         GridBox {
             name: String::from("48E"),
+            row: 5,
+            column: 3,
             color: GridBoxColor::Yellow,
             value: 48,
             up: String::from("54D"),
@@ -1005,6 +1330,8 @@ pub fn initialize_stock_market(
         String::from("55E"),
         GridBox {
             name: String::from("55E"),
+            row: 5,
+            column: 4,
             color: GridBoxColor::Yellow,
             value: 55,
             up: String::from("60D"),
@@ -1016,6 +1343,8 @@ pub fn initialize_stock_market(
         String::from("62E"),
         GridBox {
             name: String::from("62E"),
+            row: 5,
+            column: 5,
             color: GridBoxColor::Clear,
             value: 62,
             up: String::from("66D"),
@@ -1027,6 +1356,8 @@ pub fn initialize_stock_market(
         String::from("67E"),
         GridBox {
             name: String::from("67E"),
+            row: 5,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 67,
             up: String::from("71D"),
@@ -1038,6 +1369,8 @@ pub fn initialize_stock_market(
         String::from("71E"),
         GridBox {
             name: String::from("71E"),
+            row: 5,
+            column: 7,
             color: GridBoxColor::Red,
             value: 71,
             up: String::from("76D"),
@@ -1049,6 +1382,8 @@ pub fn initialize_stock_market(
         String::from("76E"),
         GridBox {
             name: String::from("76E"),
+            row: 5,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 76,
             up: String::from("82D"),
@@ -1060,6 +1395,8 @@ pub fn initialize_stock_market(
         String::from("82E"),
         GridBox {
             name: String::from("82E"),
+            row: 5,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 82,
             up: String::from("90D"),
@@ -1071,6 +1408,8 @@ pub fn initialize_stock_market(
         String::from("90E"),
         GridBox {
             name: String::from("90E"),
+            row: 5,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 90,
             up: String::from("100D"),
@@ -1082,6 +1421,8 @@ pub fn initialize_stock_market(
         String::from("100E"),
         GridBox {
             name: String::from("100E"),
+            row: 5,
+            column: 11,
             color: GridBoxColor::Clear,
             value: 100,
             up: String::from("110D"),
@@ -1096,6 +1437,8 @@ pub fn initialize_stock_market(
         String::from("25F"),
         GridBox {
             name: String::from("25F"),
+            row: 6,
+            column: 1,
             color: GridBoxColor::Brown,
             value: 25,
             up: String::from("32E"),
@@ -1107,6 +1450,8 @@ pub fn initialize_stock_market(
         String::from("34F"),
         GridBox {
             name: String::from("34F"),
+            row: 6,
+            column: 2,
             color: GridBoxColor::Orange,
             value: 34,
             up: String::from("41E"),
@@ -1118,6 +1463,8 @@ pub fn initialize_stock_market(
         String::from("42F"),
         GridBox {
             name: String::from("42F"),
+            row: 6,
+            column: 3,
             color: GridBoxColor::Orange,
             value: 42,
             up: String::from("48E"),
@@ -1129,6 +1476,8 @@ pub fn initialize_stock_market(
         String::from("50F"),
         GridBox {
             name: String::from("50F"),
+            row: 6,
+            column: 4,
             color: GridBoxColor::Yellow,
             value: 50,
             up: String::from("55E"),
@@ -1140,6 +1489,8 @@ pub fn initialize_stock_market(
         String::from("58F"),
         GridBox {
             name: String::from("58F"),
+            row: 6,
+            column: 5,
             color: GridBoxColor::Yellow,
             value: 58,
             up: String::from("62E"),
@@ -1151,6 +1502,8 @@ pub fn initialize_stock_market(
         String::from("65F"),
         GridBox {
             name: String::from("65F"),
+            row: 6,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 65,
             up: String::from("67E"),
@@ -1162,6 +1515,8 @@ pub fn initialize_stock_market(
         String::from("67F"),
         GridBox {
             name: String::from("67F"),
+            row: 6,
+            column: 7,
             color: GridBoxColor::Red,
             value: 67,
             up: String::from("71E"),
@@ -1173,6 +1528,8 @@ pub fn initialize_stock_market(
         String::from("71F"),
         GridBox {
             name: String::from("71F"),
+            row: 6,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 71,
             up: String::from("76E"),
@@ -1184,6 +1541,8 @@ pub fn initialize_stock_market(
         String::from("75F"),
         GridBox {
             name: String::from("75F"),
+            row: 6,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 75,
             up: String::from("82E"),
@@ -1195,6 +1554,8 @@ pub fn initialize_stock_market(
         String::from("80F"),
         GridBox {
             name: String::from("80F"),
+            row: 6,
+            column: 10,
             color: GridBoxColor::Clear,
             value: 80,
             up: String::from("90E"),
@@ -1209,6 +1570,8 @@ pub fn initialize_stock_market(
         String::from("18G"),
         GridBox {
             name: String::from("18G"),
+            row: 7,
+            column: 1,
             color: GridBoxColor::Brown,
             value: 18,
             up: String::from("25F"),
@@ -1220,6 +1583,8 @@ pub fn initialize_stock_market(
         String::from("27G"),
         GridBox {
             name: String::from("27G"),
+            row: 7,
+            column: 2,
             color: GridBoxColor::Brown,
             value: 27,
             up: String::from("34F"),
@@ -1231,6 +1596,8 @@ pub fn initialize_stock_market(
         String::from("36G"),
         GridBox {
             name: String::from("36G"),
+            row: 7,
+            column: 3,
             color: GridBoxColor::Orange,
             value: 36,
             up: String::from("42F"),
@@ -1242,6 +1609,8 @@ pub fn initialize_stock_market(
         String::from("45G"),
         GridBox {
             name: String::from("45G"),
+            row: 7,
+            column: 4,
             color: GridBoxColor::Orange,
             value: 45,
             up: String::from("50F"),
@@ -1253,6 +1622,8 @@ pub fn initialize_stock_market(
         String::from("54G"),
         GridBox {
             name: String::from("54G"),
+            row: 7,
+            column: 5,
             color: GridBoxColor::Yellow,
             value: 54,
             up: String::from("58F"),
@@ -1264,6 +1635,8 @@ pub fn initialize_stock_market(
         String::from("63G"),
         GridBox {
             name: String::from("63G"),
+            row: 7,
+            column: 6,
             color: GridBoxColor::Clear,
             value: 63,
             up: String::from("65F"),
@@ -1275,6 +1648,8 @@ pub fn initialize_stock_market(
         String::from("67G"),
         GridBox {
             name: String::from("67G"),
+            row: 7,
+            column: 7,
             color: GridBoxColor::Clear,
             value: 67,
             up: String::from("67F"),
@@ -1286,6 +1661,8 @@ pub fn initialize_stock_market(
         String::from("69G"),
         GridBox {
             name: String::from("69G"),
+            row: 7,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 69,
             up: String::from("71F"),
@@ -1297,6 +1674,8 @@ pub fn initialize_stock_market(
         String::from("70G"),
         GridBox {
             name: String::from("70G"),
+            row: 7,
+            column: 9,
             color: GridBoxColor::Clear,
             value: 70,
             up: String::from("75F"),
@@ -1311,6 +1690,8 @@ pub fn initialize_stock_market(
         String::from("10H"),
         GridBox {
             name: String::from("10H"),
+            row: 8,
+            column: 1,
             color: GridBoxColor::Brown,
             value: 10,
             up: String::from("18G"),
@@ -1322,6 +1703,8 @@ pub fn initialize_stock_market(
         String::from("20H"),
         GridBox {
             name: String::from("20H"),
+            row: 8,
+            column: 2,
             color: GridBoxColor::Brown,
             value: 20,
             up: String::from("27G"),
@@ -1333,6 +1716,8 @@ pub fn initialize_stock_market(
         String::from("30H"),
         GridBox {
             name: String::from("30H"),
+            row: 8,
+            column: 3,
             color: GridBoxColor::Brown,
             value: 30,
             up: String::from("36G"),
@@ -1344,6 +1729,8 @@ pub fn initialize_stock_market(
         String::from("40H"),
         GridBox {
             name: String::from("40H"),
+            row: 8,
+            column: 4,
             color: GridBoxColor::Orange,
             value: 40,
             up: String::from("45G"),
@@ -1355,6 +1742,8 @@ pub fn initialize_stock_market(
         String::from("50H"),
         GridBox {
             name: String::from("50H"),
+            row: 8,
+            column: 5,
             color: GridBoxColor::Yellow,
             value: 50,
             up: String::from("54G"),
@@ -1366,6 +1755,8 @@ pub fn initialize_stock_market(
         String::from("60H"),
         GridBox {
             name: String::from("60H"),
+            row: 8,
+            column: 6,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("63G"),
@@ -1377,6 +1768,8 @@ pub fn initialize_stock_market(
         String::from("67H"),
         GridBox {
             name: String::from("67H"),
+            row: 8,
+            column: 7,
             color: GridBoxColor::Clear,
             value: 67,
             up: String::from("67G"),
@@ -1388,6 +1781,8 @@ pub fn initialize_stock_market(
         String::from("68H"),
         GridBox {
             name: String::from("68H"),
+            row: 8,
+            column: 8,
             color: GridBoxColor::Clear,
             value: 68,
             up: String::from("69G"),
@@ -1402,6 +1797,8 @@ pub fn initialize_stock_market(
         String::from("10I"),
         GridBox {
             name: String::from("10I"),
+            row: 9,
+            column: 2,
             color: GridBoxColor::Brown,
             value: 10,
             up: String::from("20H"),
@@ -1413,6 +1810,8 @@ pub fn initialize_stock_market(
         String::from("20I"),
         GridBox {
             name: String::from("20I"),
+            row: 9,
+            column: 3,
             color: GridBoxColor::Brown,
             value: 20,
             up: String::from("30H"),
@@ -1424,6 +1823,8 @@ pub fn initialize_stock_market(
         String::from("30I"),
         GridBox {
             name: String::from("30I"),
+            row: 9,
+            column: 4,
             color: GridBoxColor::Brown,
             value: 30,
             up: String::from("40H"),
@@ -1435,6 +1836,8 @@ pub fn initialize_stock_market(
         String::from("40I"),
         GridBox {
             name: String::from("40I"),
+            row: 9,
+            column: 5,
             color: GridBoxColor::Orange,
             value: 40,
             up: String::from("50H"),
@@ -1446,6 +1849,8 @@ pub fn initialize_stock_market(
         String::from("50I"),
         GridBox {
             name: String::from("50I"),
+            row: 9,
+            column: 6,
             color: GridBoxColor::Yellow,
             value: 50,
             up: String::from("60H"),
@@ -1457,6 +1862,8 @@ pub fn initialize_stock_market(
         String::from("60I"),
         GridBox {
             name: String::from("60I"),
+            row: 9,
+            column: 7,
             color: GridBoxColor::Yellow,
             value: 60,
             up: String::from("67H"),
@@ -1471,6 +1878,8 @@ pub fn initialize_stock_market(
         String::from("10J"),
         GridBox {
             name: String::from("10J"),
+            row: 10,
+            column: 3,
             color: GridBoxColor::Brown,
             value: 10,
             up: String::from("20I"),
@@ -1482,6 +1891,8 @@ pub fn initialize_stock_market(
         String::from("20J"),
         GridBox {
             name: String::from("20J"),
+            row: 10,
+            column: 4,
             color: GridBoxColor::Brown,
             value: 20,
             up: String::from("30I"),
@@ -1493,6 +1904,8 @@ pub fn initialize_stock_market(
         String::from("30J"),
         GridBox {
             name: String::from("30J"),
+            row: 10,
+            column: 5,
             color: GridBoxColor::Brown,
             value: 30,
             up: String::from("40I"),
@@ -1504,6 +1917,8 @@ pub fn initialize_stock_market(
         String::from("40J"),
         GridBox {
             name: String::from("40J"),
+            row: 10,
+            column: 6,
             color: GridBoxColor::Orange,
             value: 40,
             up: String::from("50I"),
@@ -1515,6 +1930,8 @@ pub fn initialize_stock_market(
         String::from("50J"),
         GridBox {
             name: String::from("50J"),
+            row: 10,
+            column: 7,
             color: GridBoxColor::Yellow,
             value: 50,
             up: String::from("60I"),
@@ -1529,6 +1946,8 @@ pub fn initialize_stock_market(
         String::from("10K"),
         GridBox {
             name: String::from("10K"),
+            row: 11,
+            column: 4,
             color: GridBoxColor::Brown,
             value: 10,
             up: String::from("20J"),
@@ -1540,6 +1959,8 @@ pub fn initialize_stock_market(
         String::from("20K"),
         GridBox {
             name: String::from("20K"),
+            row: 11,
+            column: 5,
             color: GridBoxColor::Brown,
             value: 20,
             up: String::from("30J"),
@@ -1551,6 +1972,8 @@ pub fn initialize_stock_market(
         String::from("30K"),
         GridBox {
             name: String::from("30K"),
+            row: 11,
+            column: 6,
             color: GridBoxColor::Brown,
             value: 30,
             up: String::from("40J"),
@@ -1562,6 +1985,8 @@ pub fn initialize_stock_market(
         String::from("40K"),
         GridBox {
             name: String::from("40K"),
+            row: 11,
+            column: 7,
             color: GridBoxColor::Orange,
             value: 40,
             up: String::from("50J"),

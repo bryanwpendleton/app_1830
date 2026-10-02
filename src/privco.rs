@@ -129,6 +129,41 @@ pub enum ResolveBidsAction
     Pass,
 }
 
+pub fn pay_privco_revenue(
+    game_state: &mut GameState,
+    players: &mut Query<&mut Player>, )
+{
+    // At the beginning of an operating round, each private company
+    // (not yet closed) operates. This consists of paying its owner the
+    // revenue indicated on its certificate and in the Private Companies
+    // table 
+
+    for mut player in players.iter_mut()
+    {
+        let mut pc_idx: usize = 0;
+        while pc_idx < NUM_PRIVATE_COMPANIES
+        {
+            let encoded_state = game_state.private_company_states[pc_idx];
+
+            if encoded_state >= PrivateCompanyState::OwnedByPlayer as u32 &&
+               encoded_state <  PrivateCompanyState::OwnedByPlayer as u32 + 5
+            {
+                let owner =
+                    encoded_state - PrivateCompanyState::OwnedByPlayer as u32;
+
+                if owner == player.order
+                {
+                    let revenue = PrivateCompany::revenue(pc_idx);
+
+                    player.assets.personal_money += revenue;
+                    game_state.bank -= revenue;
+                }
+            }
+            pc_idx += 1;
+        }
+    }
+}
+
 // A bid for a private company must exceed the face value of the
 // company (or of any other bid already made for it) by at least $5
 // and a multiple of $1. The player must place the bid money in
@@ -240,6 +275,7 @@ pub fn buy_pc_impl(
         if player.order == player_id
         {
             player.assets.personal_money -= amount;
+            game_state.bank += amount;
             player.assets.private_companies[pc as usize] = 1;
             player.assets.certificates.push(
                 Certificate::private_company_certificate(pc as usize));

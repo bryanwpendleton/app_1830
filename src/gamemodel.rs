@@ -19,14 +19,18 @@ use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
+use crate::stockmarket::ShareValueToken;
+use crate::stockmarket::check_if_floated;
 use crate::stockmarket::railroad_purchase_options;
 use crate::stockmarket::stock_round_pass_impl;
 use crate::stockmarket::buy_railroad_impl;
 use crate::stockmarket::PurchaseDecision;
+use crate::stockmarket::set_operating_order;
 use crate::privco::NUM_PRIVATE_COMPANIES;
 use crate::privco::PlayerBid;
 use crate::privco::PrivateCompanyAuctionSubphase;
 use crate::privco::PrivateCompanyState;
+use crate::privco::pay_privco_revenue;
 use crate::privco::auction_pass_impl;
 use crate::privco::buy_pc_impl;
 use crate::privco::place_bid_impl;
@@ -246,6 +250,16 @@ pub struct MarketState {
     pub current_player_has_sold_stock: bool,
 }
 
+pub struct OperatingRailroad
+{
+    pub grid_position: GridBox,
+    pub z_order: u32,
+}
+
+pub struct OperatingState {
+    pub order: Vec<OperatingRailroad>, // floated railroads in operating order
+}
+
 // The Railroad Corporations don't have any natural order,
 // here we just list them in the order they occur in the rules.
 
@@ -263,15 +277,30 @@ pub enum Railroad {
     BostonAndMaine = 7,
 }
 
+// Railroad Corporations have assets:
+// - station tokens, or station markers
+// - money
+// - trains
+pub struct RailroadAssets
+{
+    pub stations: u32, // number of not-yet-placed station markers
+    pub corporation_money: u32,
+    pub trains: Vec<Train>,
+    pub share_value_token: ShareValueToken,
+}
+
 /// Marks an entity as a Railroad Corporation
 #[derive(Component)]
 pub struct RailroadCorporation {
     pub name: String,
     pub short_name: String,
     pub par_value: u32,
+    pub certificates_remaining: u32,
     pub num_stations: u32,
     pub starting_city: String,
     pub starting_hex: String,
+    pub floated: bool,
+    pub assets: RailroadAssets,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,7 +318,7 @@ impl ParValue
     {
         match self
         {
-            ParValue::SixtySeven => "68",
+            ParValue::SixtySeven => "67",
             ParValue::SeventyOne => "71",
             ParValue::SeventySix => "76",
             ParValue::EightyTwo => "82",
@@ -319,7 +348,7 @@ impl PrivateCompany
 {
     pub fn fromInteger(i: usize) -> PrivateCompany
     {
-        match (i)
+        match i
         {
             0 => PrivateCompany::SchuykillValley,
             1 => PrivateCompany::ChamplainAndStLawrence,
@@ -343,6 +372,20 @@ impl PrivateCompany
             _ => 999,
         }
     }
+    pub fn revenue(i: usize) -> u32
+    {
+        match i
+        {
+            0 => 5,  // PrivateCompany::SchuykillValley,
+            1 => 10, // PrivateCompany::ChamplainAndStLawrence,
+            2 => 15, // PrivateCompany::DelawareAndHudson,
+            3 => 20, // PrivateCompany::MohawkAndHudson,
+            4 => 25, // PrivateCompany::CamdenAndAmboy,
+            5 => 30, // PrivateCompany::BaltimoreAndOhio,
+            _ => 0,  //PrivateCompany::UnknownPrivateCompany,
+        }
+    }
+
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -397,6 +440,8 @@ pub struct GameState {
     pub current_par_value: ParValue ,
     pub railroads: Vec<RailroadCorporation>,
 
+    pub operating_state: OperatingState,
+
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
     // `spawn_routemap`. These maps let any system that has `GameState`
@@ -438,6 +483,9 @@ impl GameState {
                 current_player_has_bought_stock: false,
                 current_player_has_sold_stock: false,
             },
+            operating_state: OperatingState {
+                order: Vec::new(),
+            },
 
             private_company_states: [0;6],
             auction_bids: Vec::new(),
@@ -455,65 +503,161 @@ impl GameState {
                     name: "Pennsylvania".to_string(),
                     short_name: "PRR".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 4,
                     starting_city: "Altoona".to_string(),
                     starting_hex: "H12".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "New York Central".to_string(),
                     short_name: "NYC".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 4,
                     starting_city: "Albany".to_string(),
                     starting_hex: "E19".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "Canadian Pacific".to_string(),
                     short_name: "CPR".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 4,
                     starting_city: "Montreal".to_string(),
                     starting_hex: "A19".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "Baltimore & Ohio".to_string(),
                     short_name: "B&O".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 3,
                     starting_city: "Baltimore".to_string(),
                     starting_hex: "I15".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "Chesapeake & Ohio".to_string(),
                     short_name: "C&O".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 3,
                     starting_city: "Cleveland".to_string(),
                     starting_hex: "F6".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "Erie".to_string(),
                     short_name: "Erie".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 3,
                     starting_city: "Buffalo".to_string(),
                     starting_hex: "E11".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "New York, New Haven, & Hartford".to_string(),
                     short_name: "NNH".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 2,
                     starting_city: "New York".to_string(),
                     starting_hex: "G19".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
                 RailroadCorporation {
                     name: "Boston & Maine".to_string(),
                     short_name: "B&M".to_string(),
                     par_value: 0,
+                    certificates_remaining: 9,
                     num_stations: 2,
                     starting_city: "Boston".to_string(),
                     starting_hex: "E23".to_string(),
+                    floated: false,
+                    assets: RailroadAssets {
+                        stations: 0,
+                        corporation_money: 0,
+                        trains: Vec::new(),
+                        share_value_token: ShareValueToken
+                            {
+                                grid_box: "".to_string(),
+                                z_order: 0
+                            },
+                    },
                 },
             ],
 
@@ -655,7 +799,13 @@ pub fn start_stock_round(mut game_state: ResMut<GameState>,
 
 /// Runs once each time an Operating Round begins (on entering
 /// [`RoundState::OperatingRound`]).
-pub fn start_operating_round() {
+pub fn start_operating_round(mut game_state: ResMut<GameState>,
+    mut players: Query<&mut Player>, )
+{
+    pay_privco_revenue(& mut game_state, & mut players);
+
+    set_operating_order(& mut game_state, & mut players);
+
     info!("=== Operating Round starting ===");
 }
 
@@ -1105,6 +1255,7 @@ pub fn build_right_side_stock_ui(
                         &mut current_player,
                         rr_idx,
                         PurchaseDecision::BuyCert);
+                check_if_floated(commands, game_state, players, rr_idx);
                 return;
             }
         }
