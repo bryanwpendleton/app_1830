@@ -1330,7 +1330,7 @@ pub fn build_right_side_operating_ui(
             players: &mut Query<& mut Player>,
             game_state: & mut GameState)
 {
-    let Ok(mut current_railroad) =
+    let Some(mut current_railroad) =
         game_state.operating_state.order.get(game_state.operating_state.cur_rr)
     else {
         return;
@@ -1338,7 +1338,7 @@ pub fn build_right_side_operating_ui(
     let current_player_idx =
         president_of(game_state, players, game_state.operating_state.cur_rr);
     let current_player_ety = game_state.player_by_player_id[current_player_idx];
-    let Ok(current_player) = players.get(current_player_ety) else {
+    let Ok(mut current_player) = players.get_mut(current_player_ety) else {
         return;
     };
 
