@@ -180,6 +180,7 @@ pub fn get_max_zorder(game_state: & GameState,
                                 start_pos : &str,
                                 this_rr: usize) -> u32
 {
+    info!("get_max_zorder");
     let mut result : u32 = 0;
     let mut rr_idx : usize = 0;
     while rr_idx < NUM_RAILROADS
@@ -213,6 +214,7 @@ pub fn get_max_zorder(game_state: & GameState,
 pub fn place_share_value_token(game_state: & mut GameState,
                                 rr_idx: usize)
 {
+    info!("place_share_value_token");
     let railroad = & game_state.railroads[rr_idx];
 
     let start_pos = match railroad.par_value
@@ -366,6 +368,7 @@ pub fn set_operating_order(
     game_state: &mut GameState,
     players: &mut Query<&mut Player>, )
 {
+    info!("Set_operating_order");
     game_state.operating_state.order = Vec::new();
 
     let mut rr_idx : usize = 0;
@@ -386,10 +389,16 @@ pub fn set_operating_order(
                 {
                     grid_position: grid_position,
                     z_order: z_order,
+                    rr_idx : rr_idx,
                 });
         }
+        rr_idx += 1;
     }
     game_state.operating_state.order.sort_by(compare_operating_order);
+    game_state.operating_state.cur_rr = 0;
+
+    info!("Computed {} railroads are ready to operate this round",
+                game_state.operating_state.order.len());
 }
 
 /// System to initialize the Stock Market grid at game start.

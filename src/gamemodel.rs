@@ -238,6 +238,40 @@ impl Certificate
     }
 }
 
+// who holds the president's certificate for cur_rr?
+
+pub fn president_of(
+            game_state: & GameState,
+            players: &mut Query<& mut Player>,
+            cur_rr: usize) -> usize
+{
+    let cert_we_want = match cur_rr
+    {
+        0 => Certificate::C_PC_PRR,
+        1 => Certificate::C_PC_NYC,
+        2 => Certificate::C_PC_CPR,
+        3 => Certificate::C_PC_BnO,
+        4 => Certificate::C_PC_CnO,
+        5 => Certificate::C_PC_ERIE,
+        6 => Certificate::C_PC_NNH,
+        7 => Certificate::C_PC_BnM,
+        _ => Certificate::Unknown,
+    };
+
+    for player in players
+    {
+        for cert in player.assets.certificates.clone()
+        {
+            if cert == cert_we_want
+            {
+                return player.order as usize;
+            }
+        }
+    }
+    info!("Failed to find the present of railroad {}", cur_rr);
+    return 0;
+}
+
 /// Tracking when a Stock Round is over:
 /// - when a player passes, passes is incremented
 ///   and if passes is num == GameState.num_players, round is over
@@ -252,12 +286,14 @@ pub struct MarketState {
 
 pub struct OperatingRailroad
 {
+    pub rr_idx: usize,
     pub grid_position: GridBox,
     pub z_order: u32,
 }
 
 pub struct OperatingState {
     pub order: Vec<OperatingRailroad>, // floated railroads in operating order
+    pub cur_rr: usize, // current position in the 'order' vector
 }
 
 // The Railroad Corporations don't have any natural order,
@@ -424,6 +460,8 @@ pub struct GameState {
     pub num_players: u32, // 2-6
     pub certificate_limit: usize, // varies depending on num_players
 
+    pub round_state: RoundState,
+
     pub priority_deal_card_holder : Entity,
     pub current_player : Entity,
     // player entity by player_id; there may be fewer than 6 players
@@ -473,6 +511,7 @@ impl GameState {
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
             certificate_limit: 0,
+            round_state: RoundState::StockRound,
             priority_deal_card_holder : Entity::PLACEHOLDER,
             current_player : Entity::PLACEHOLDER,
             player_by_player_id : [Entity::PLACEHOLDER;6],
@@ -485,6 +524,7 @@ impl GameState {
             },
             operating_state: OperatingState {
                 order: Vec::new(),
+                cur_rr: 0,
             },
 
             private_company_states: [0;6],
@@ -795,6 +835,7 @@ pub fn start_stock_round(mut game_state: ResMut<GameState>,
     {
         game_state.current_player = current_player;
     }
+    game_state.round_state = RoundState::StockRound;
 }
 
 /// Runs once each time an Operating Round begins (on entering
@@ -805,6 +846,8 @@ pub fn start_operating_round(mut game_state: ResMut<GameState>,
     pay_privco_revenue(& mut game_state, & mut players);
 
     set_operating_order(& mut game_state, & mut players);
+
+    game_state.round_state = RoundState::OperatingRound;
 
     info!("=== Operating Round starting ===");
 }
@@ -1021,10 +1064,14 @@ pub fn game_state_panel_right(
                 build_right_side_privatecompany_ui(
                         &mut commands, ui, &mut players, &mut game_state);
             }
+            else if game_state.round_state == RoundState::StockRound
+            {
+                build_right_side_stock_ui(
+                        &mut commands, ui, &mut players, &mut game_state);
+            }
             else
             {
-                // assume we're in a stock round for now.
-                build_right_side_stock_ui(
+                build_right_side_operating_ui(
                         &mut commands, ui, &mut players, &mut game_state);
             }
             // ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
@@ -1196,6 +1243,105 @@ pub fn build_right_side_stock_ui(
     let Ok(mut current_player) = players.get_mut(game_state.current_player) else {
         return;
     };
+    let current_order = current_player.order;
+    let current_name = current_player.name.clone();
+    let current_money = current_player.assets.personal_money;
+
+    ui.label(format!("{}: you have {} and may:",
+            current_name,
+            current_money));
+
+    egui::ComboBox::from_label("Set Par Value")
+        .selected_text(game_state.current_par_value.name())
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SixtySeven, ParValue::SixtySeven.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SeventyOne, ParValue::SeventyOne.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::SeventySix, ParValue::SeventySix.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::EightyTwo, ParValue::EightyTwo.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::Ninety, ParValue::Ninety.name());
+            ui.selectable_value(&mut game_state.current_par_value,
+                ParValue::OneHundred, ParValue::OneHundred.name());
+        });
+
+    let mut rr_idx : usize = 0;
+    while rr_idx < NUM_RAILROADS
+    {
+        let railroad = &game_state.railroads[rr_idx];
+        let short_name = railroad.short_name.clone();
+
+        let purchase_options = railroad_purchase_options(
+                game_state, &current_player, railroad);
+
+        if purchase_options.canBuyPresCert()
+        {
+            let price = 2 * game_state.current_par_value as u32;
+
+            if ui.button(format!("Buy {:?} pres cert for {}",
+                        short_name, price)).clicked()
+            {
+                buy_railroad_impl(commands, game_state,
+                        &mut current_player,
+                        rr_idx,
+                        PurchaseDecision::BuyPresCert);
+                return;
+            }
+        }
+        if purchase_options.canBuyCert()
+        {
+            let price = game_state.current_par_value as u32;
+
+            if ui.button(format!("Buy {:?} cert for {}",
+                        short_name, price)).clicked()
+            {
+                buy_railroad_impl(commands, game_state,
+                        &mut current_player,
+                        rr_idx,
+                        PurchaseDecision::BuyCert);
+                check_if_floated(commands, game_state, players, rr_idx);
+                return;
+            }
+        }
+        rr_idx += 1;
+    }
+    if ui.button("Pass").clicked()
+    {
+        stock_round_pass_impl( commands, game_state,
+                            players, current_order);
+        return;
+    }
+}
+
+// Each railroad is operated by the player that owns its president’s
+// certificate. Each railroad may lay track, earn revenue, and
+// purchase trains. In addition, each railroad must decide each
+// operating round whether to distribute its earnings as dividends
+// among the stockholders (raising the railroad’s share value) or to
+// retain its earnings to finance further corporate activities (thus
+// lowering its share value).
+
+pub fn build_right_side_operating_ui(
+            commands: &mut Commands,
+            ui: &mut Ui,
+            players: &mut Query<& mut Player>,
+            game_state: & mut GameState)
+{
+    let Ok(mut current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {
+        return;
+    };
+    let current_player_idx =
+        president_of(game_state, players, game_state.operating_state.cur_rr);
+    let current_player_ety = game_state.player_by_player_id[current_player_idx];
+    let Ok(current_player) = players.get(current_player_ety) else {
+        return;
+    };
+
     let current_order = current_player.order;
     let current_name = current_player.name.clone();
     let current_money = current_player.assets.personal_money;
