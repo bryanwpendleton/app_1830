@@ -160,7 +160,7 @@ pub struct Tile {
 /// the enum Face.
 #[derive(Component)]
 pub struct TileTrack {
-    pub track: [i32;6],
+    pub track: [usize;6],
 }
 
 #[derive(Component)]
@@ -172,7 +172,7 @@ pub enum TileColor {
 
 #[derive(Component)]
 struct TileRotation {
-    rotation: u32,      // facing 3 means rotated twice.
+    rotation: usize,      // facing 3 means rotated twice.
 }
 
 /// Marker of placement data
@@ -435,14 +435,14 @@ info!("location of worldPos {},{} is {:?}", pos.x,pos.y,hex);
 
 impl TileTrack
 {
-    pub fn rotate_tile_track(&self, rotation: i32) -> [i32;6] {
+    pub fn rotate_tile_track(&self, rotation: usize) -> [usize;6] {
         // the output position for each input position:
-        let o0 : usize = ( ( 0 as usize ) + rotation as usize ) % 6;
-        let o1 : usize = ( ( 1 as usize ) + rotation as usize ) % 6;
-        let o2 : usize = ( ( 2 as usize ) + rotation as usize ) % 6;
-        let o3 : usize = ( ( 3 as usize ) + rotation as usize ) % 6;
-        let o4 : usize = ( ( 4 as usize ) + rotation as usize ) % 6;
-        let o5 : usize = ( ( 5 as usize ) + rotation as usize ) % 6;
+        let o0 : usize = ( ( 0 ) + rotation) % 6;
+        let o1 : usize = ( ( 1 ) + rotation) % 6;
+        let o2 : usize = ( ( 2 ) + rotation) % 6;
+        let o3 : usize = ( ( 3 ) + rotation) % 6;
+        let o4 : usize = ( ( 4 ) + rotation) % 6;
+        let o5 : usize = ( ( 5 ) + rotation) % 6;
 
         let mut result = [0;6];
 
@@ -1160,7 +1160,10 @@ pub fn do_simple_routefinding_tests(
     // Placing a tile on B10 should now allow a_star to find a path
     // from A9 to B10
 
-    game_state.tile_string = String::from("B10:yellow/T57_base.png:57:0");
+    game_state.track_state.hex_chosen = true;
+    game_state.track_state.hex_name = "B10".to_string();
+    game_state.track_state.tile_chosen = 57;
+    game_state.track_state.tile_rotation = 0;
 
     place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
         &placement, &asset_server,
@@ -1178,25 +1181,37 @@ pub fn do_simple_routefinding_tests(
     // B10 => C9 => D10 => D12.
     // Then we'll see what paths we find.
 
-    game_state.tile_string = String::from("B10:green/T14_f2.png:14:1");
+    game_state.track_state.hex_chosen = true;
+    game_state.track_state.hex_name = "B10".to_string();
+    game_state.track_state.tile_chosen = 14;
+    game_state.track_state.tile_rotation = 1;
 
     place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
         &placement, &asset_server,
     );
 
-    game_state.tile_string = String::from("C9:yellow/T8_f2.png:8:1");
+    game_state.track_state.hex_chosen = true;
+    game_state.track_state.hex_name = "C9".to_string();
+    game_state.track_state.tile_chosen = 8;
+    game_state.track_state.tile_rotation = 1;
 
     place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
         &placement, &asset_server,
     );
 
-    game_state.tile_string = String::from("D10:orange/T65_base.png:65:0");
+    game_state.track_state.hex_chosen = true;
+    game_state.track_state.hex_name = "D10".to_string();
+    game_state.track_state.tile_chosen = 65;
+    game_state.track_state.tile_rotation = 0;
 
     place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
         &placement, &asset_server,
     );
 
-    game_state.tile_string = String::from("D12:yellow/T9_f3.png:9:2");
+    game_state.track_state.hex_chosen = true;
+    game_state.track_state.hex_name = "D12".to_string();
+    game_state.track_state.tile_chosen = 9;
+    game_state.track_state.tile_rotation = 2;
 
     place_tile_impl( &mut game_state, &mut hexes, &mut inventory,
         &placement, &asset_server,

@@ -294,6 +294,16 @@ pub struct OperatingRailroad
 pub struct OperatingState {
     pub order: Vec<OperatingRailroad>, // floated railroads in operating order
     pub cur_rr: usize, // current position in the 'order' vector
+    pub action_performed: RailroadOperation,
+}
+
+// Tracks state during the laying of a new track tile
+
+pub struct TrackState {
+    pub hex_chosen: bool,
+    pub hex_name: String,
+    pub tile_chosen: u32,
+    pub tile_rotation: usize,
 }
 
 // The Railroad Corporations don't have any natural order,
@@ -448,6 +458,20 @@ pub struct CurrentPCAuction
     pub current_bidder: u32,
 }
 
+// Each railroad’s operating turn consists of the following
+// activities performed in the order given
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RailroadOperation
+{
+    None = 0,
+    ConstructTrack = 1,
+    PlaceStation = 2,
+    RunTrains = 3,
+    MakeDividendDecision = 4,
+    PurchaseTrain = 5,
+}
+
 // ============================================================================
 // RESOURCES - Global game state
 // ============================================================================
@@ -479,6 +503,7 @@ pub struct GameState {
     pub railroads: Vec<RailroadCorporation>,
 
     pub operating_state: OperatingState,
+    pub track_state: TrackState,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -495,8 +520,6 @@ pub struct GameState {
     pub inventory_by_number: HashMap<u32, Entity>,
 
     pub tile_placement_data_by_number: HashMap<u32, Entity>,
-
-    pub tile_string : String,
 }
 
 impl GameState {
@@ -525,6 +548,13 @@ impl GameState {
             operating_state: OperatingState {
                 order: Vec::new(),
                 cur_rr: 0,
+                action_performed: RailroadOperation::None,
+            },
+            track_state: TrackState {
+                hex_chosen: false,
+                hex_name: String::new(),
+                tile_chosen: 0,
+                tile_rotation: 0,
             },
 
             private_company_states: [0;6],
@@ -705,7 +735,6 @@ impl GameState {
             tile_by_name: HashMap::new(),
             inventory_by_number: HashMap::new(),
             tile_placement_data_by_number: HashMap::new(),
-            tile_string: String::new(),
         }
     }
 
@@ -882,8 +911,8 @@ pub fn advance_game_phase(
 
 /// Places a track tile on a map hex, maintaining the tile inventory.
 ///
-/// The request is carried in `game_state.tile_string`, formatted as
-/// `hex_name:image_path:tile_number` (e.g. `"F12:Map/T57.png:57"`).
+/// The request is carried in `game_state.track_state`, fields including
+/// hex_name, tile_chosen, tile_rotation
 ///
 /// Placement rules enforced here:
 ///   - The tile to place must have non-zero inventory; otherwise the placement
@@ -929,47 +958,37 @@ pub fn place_tile_impl(
     placement: &Query<(&TilePlacementData, &TileTrack)>,
     asset_server: &AssetServer,
 ) {
-    if game_state.tile_string.is_empty()
+    if ! game_state.track_state.hex_chosen
     {
         return;
     }
 
-    info!("You asked to place a tile : {}", game_state.tile_string);
-
-    let v: Vec<String> = game_state
-        .tile_string
-        .split(":")
-        .map(|s| s.to_string())
-        .collect();
+    info!("You asked to place tile {} on hex {} with rotation {}",
+            game_state.track_state.tile_chosen,
+            game_state.track_state.hex_name,
+            game_state.track_state.tile_rotation);
 
     // Always consume the request, whether or not it turns out to be valid.
-    game_state.tile_string.clear();
+    // FIXME. Who clears track_state?
 
-    if v.len() != 4 {
-        info!("Malformed tile request, expected hex_name:image:tile_number:rotation");
-        return;
-    }
-    let (hex_name, image_path) = (&v[0], &v[1]);
-    let Ok(new_number) = v[2].parse::<u32>() else {
-        info!("Bad tile_number in tile request: {}", v[2]);
-        return;
-    };
-    let Ok(rotation) = v[3].parse::<i32>() else {
-        info!("Bad rotation in tile request: {}", v[3]);
-        return;
-    };
+    let hex_name = game_state.track_state.hex_name;
+    let new_number = game_state.track_state.tile_chosen;
+    let rotation = game_state.track_state.tile_rotation;
 
     // Resolve the target hex and the incoming tile's inventory via the indices.
-    let Some(&hex_entity) = game_state.tile_by_name.get(hex_name) else {
+    let Some(&hex_entity) = game_state.tile_by_name.get(&hex_name) else {
         info!("No tile named {}", hex_name);
         return;
     };
-    let Some(&new_inv_entity) = game_state.inventory_by_number.get(&new_number) else {
+    let Some(&new_inv_entity) =
+                    game_state.inventory_by_number.get(& new_number) else
+    {
         info!("No inventory for tile number {}", new_number);
         return;
     };
     let Some(&placement_entity) =
-                    game_state.tile_placement_data_by_number.get(&new_number) else {
+            game_state.tile_placement_data_by_number.get( & new_number) else
+    {
         info!("No placement data for tile number {}", new_number);
         return;
     };
@@ -1016,10 +1035,12 @@ pub fn place_tile_impl(
             new_number, new_q.quantity);
     }
 
+    let mut image_path = "unknown";
     // placement data with track pattern and other placement details:
     if let Ok(tile_data) = placement.get(placement_entity)  {
         // info!("loaded placement data for tile number {}", new_number);
         map_tile.track = tile_data.1.rotate_tile_track(rotation);
+        // FIXME image_path = tile_data.1.get_tile_image(rotation);
     } else {
         info!("Unable to find placement data for tile number {}", new_number);
         return;
@@ -1074,7 +1095,6 @@ pub fn game_state_panel_right(
                 build_right_side_operating_ui(
                         &mut commands, ui, &mut players, &mut game_state);
             }
-            // ui.add(egui::TextEdit::singleline(&mut game_state.tile_string));
 
             ui.separator();
         });
@@ -1335,6 +1355,9 @@ pub fn build_right_side_operating_ui(
     else {
         return;
     };
+
+    let railroad = &game_state.railroads[game_state.operating_state.cur_rr];
+    let rr_name = railroad.name.clone();
     let current_player_idx =
         president_of(game_state, players, game_state.operating_state.cur_rr);
     let current_player_ety = game_state.player_by_player_id[current_player_idx];
@@ -1342,77 +1365,129 @@ pub fn build_right_side_operating_ui(
         return;
     };
 
-    let current_order = current_player.order;
-    let current_name = current_player.name.clone();
-    let current_money = current_player.assets.personal_money;
+    let current_pres = current_player.name.clone();
+    let current_money = railroad.assets.corporation_money;
 
+    ui.label(format!("{} is the current RR, with president {}",
+            rr_name,
+            current_pres));
     ui.label(format!("{}: you have {} and may:",
-            current_name,
+            current_pres,
             current_money));
 
-    egui::ComboBox::from_label("Set Par Value")
-        .selected_text(game_state.current_par_value.name())
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::SixtySeven, ParValue::SixtySeven.name());
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::SeventyOne, ParValue::SeventyOne.name());
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::SeventySix, ParValue::SeventySix.name());
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::EightyTwo, ParValue::EightyTwo.name());
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::Ninety, ParValue::Ninety.name());
-            ui.selectable_value(&mut game_state.current_par_value,
-                ParValue::OneHundred, ParValue::OneHundred.name());
-        });
-
-    let mut rr_idx : usize = 0;
-    while rr_idx < NUM_RAILROADS
+    if game_state.operating_state.action_performed == RailroadOperation::None
     {
-        let railroad = &game_state.railroads[rr_idx];
-        let short_name = railroad.short_name.clone();
-
-        let purchase_options = railroad_purchase_options(
-                game_state, &current_player, railroad);
-
-        if purchase_options.canBuyPresCert()
+        if ui.button("Skip track construction").clicked()
         {
-            let price = 2 * game_state.current_par_value as u32;
+            game_state.operating_state.action_performed =
+                                        RailroadOperation::ConstructTrack;
+            return;
+        }
 
-            if ui.button(format!("Buy {:?} pres cert for {}",
-                        short_name, price)).clicked()
+        if !game_state.track_state.hex_chosen
+        {
+            ui.label("Click on the map...");
+        }
+        else
+        {
+            ui.label(format!("On hex {}...",
+                        game_state.track_state.hex_name));
+            // multi("Select a tile")
+            egui::ComboBox::from_label("Select tile rotation")
+                .selected_text(game_state.track_state.tile_rotation.to_string())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        0, "0");
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        1, "1");
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        2, "2");
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        3, "3");
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        4, "4");
+                    ui.selectable_value(
+                        &mut game_state.track_state.tile_rotation,
+                        5, "5");
+            });
+
+            if ui.button("Confirm tile placement").clicked()
             {
-                buy_railroad_impl(commands, game_state,
-                        &mut current_player,
-                        rr_idx,
-                        PurchaseDecision::BuyPresCert);
+                // place_tile_impl()
+                game_state.operating_state.action_performed =
+                                RailroadOperation::ConstructTrack;
                 return;
             }
         }
-        if purchase_options.canBuyCert()
-        {
-            let price = game_state.current_par_value as u32;
-
-            if ui.button(format!("Buy {:?} cert for {}",
-                        short_name, price)).clicked()
-            {
-                buy_railroad_impl(commands, game_state,
-                        &mut current_player,
-                        rr_idx,
-                        PurchaseDecision::BuyCert);
-                check_if_floated(commands, game_state, players, rr_idx);
-                return;
-            }
-        }
-        rr_idx += 1;
-    }
-    if ui.button("Pass").clicked()
-    {
-        stock_round_pass_impl( commands, game_state,
-                            players, current_order);
         return;
     }
+/*
+    if game_state.operating_state.action_performed ==
+                                        RailroadOperation::ConstructTrack
+    {
+        if button("Skip station marker placement")
+        {
+            game_state.operating_state.action_performed =
+                                    RailroadOperation::PlaceStation;
+            return;
+        }
+        if !game_state.track_state.hex_chosen
+        {
+            label("Click on the map...")
+        }
+        else
+        {
+            place_station_marker();
+            game_state.operating_state.action_performed =
+                                        RailroadOperation::PlaceStation;
+            return;
+        }
+        return;
+    }
+    if game_state.operating_state.action_performed ==
+                                        RailroadOperation::PlaceStation
+    {
+        run_trains();
+        game_state.operating_state.action_performed =
+                                        RailroadOperation::RunTrains;
+        return;
+    }
+    if game_state.operating_state.action_performed ==
+                                        RailroadOperation::RunTrains
+    {
+        if button("Reinvest {}", ).clicked
+        {
+            reinvest_revenue();
+            game_state.operating_state.action_performed =
+                                        RailroadOperation::ProcessRevenue;
+            return;
+        }
+        else if button("Declare divident of {}").clicked()
+        {
+            pay_dividend();
+            game_state.operating_state.action_performed =
+                                        RailroadOperation::ProcessRevenue;
+            return;
+        }
+    }
+    if game_state.operating_state.action_performed ==
+                                        RailroadOperation::ProcessRevenue
+    {
+        label("Purchase train?");
+        
+        if ui.button("Pass").clicked()
+        {
+            end_operating_turn( commands, game_state,
+                                players, current_order);
+            return;
+        }
+    }
+*/
 }
 
 
