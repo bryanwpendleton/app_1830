@@ -168,12 +168,15 @@ pub fn check_if_floated(commands: & Commands, game_state: & mut GameState,
     }
     if railroad.certificates_remaining <= 4
     {
+        info!("{} is now floated", railroad.name);
         railroad.assets.stations = railroad.num_stations;
         railroad.assets.corporation_money = 10 * railroad.par_value;
         railroad.floated = true;
         place_share_value_token(game_state, rr_idx);
         return;
     }
+    info!("{} has {} certificates remaining, not floated yet",
+            railroad.name, railroad.certificates_remaining);
 }
 
 pub fn get_max_zorder(game_state: & GameState,
@@ -185,18 +188,17 @@ pub fn get_max_zorder(game_state: & GameState,
     let mut rr_idx : usize = 0;
     while rr_idx < NUM_RAILROADS
     {
-        if rr_idx == this_rr
+        if rr_idx != this_rr
         {
-            continue;
-        }
-        let railroad = &game_state.railroads[rr_idx];
-        if railroad.floated
-        {
-            if railroad.assets.share_value_token.grid_box == start_pos
+            let railroad = &game_state.railroads[rr_idx];
+            if railroad.floated
             {
-                if railroad.assets.share_value_token.z_order > result
+                if railroad.assets.share_value_token.grid_box == start_pos
                 {
-                    result = railroad.assets.share_value_token.z_order
+                    if railroad.assets.share_value_token.z_order > result
+                    {
+                        result = railroad.assets.share_value_token.z_order
+                    }
                 }
             }
         }
@@ -257,6 +259,7 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
 
             let railroad = & mut game_state.railroads[rr_idx];
             railroad.par_value = game_state.current_par_value as u32;
+            railroad.certificates_remaining -= 1;
 
             let price = 2 * game_state.current_par_value as u32;
             current_player.assets.personal_money -= price;
@@ -275,7 +278,7 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             //   thus can now only sell or pass
 
             let railroad = & mut game_state.railroads[rr_idx];
-            railroad.par_value = game_state.current_par_value as u32;
+            railroad.certificates_remaining -= 1;
 
             let price = game_state.current_par_value as u32;
             current_player.assets.personal_money -= price;
@@ -396,6 +399,11 @@ pub fn set_operating_order(
     }
     game_state.operating_state.order.sort_by(compare_operating_order);
     game_state.operating_state.cur_rr = 0;
+    if game_state.operating_state.order.len() > 0
+    {
+        game_state.operating_state.cur_rr = 
+            game_state.operating_state.order[0].rr_idx;
+    }
 
     info!("Computed {} railroads are ready to operate this round",
                 game_state.operating_state.order.len());

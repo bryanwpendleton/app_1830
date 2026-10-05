@@ -357,6 +357,8 @@ pub enum ParValue {
     EightyTwo = 82,
     Ninety = 90,
     OneHundred = 100,
+
+    UnknownParValue = 127,
 } 
 impl ParValue
 {
@@ -370,6 +372,21 @@ impl ParValue
             ParValue::EightyTwo => "82",
             ParValue::Ninety => "90",
             ParValue::OneHundred => "100",
+
+            ParValue::UnknownParValue => "??",
+        }
+    }
+    pub fn fromInteger(i: usize) -> ParValue
+    {
+        match i
+        {
+            67  => ParValue::SixtySeven,
+            71  => ParValue::SeventyOne,
+            76  => ParValue::SeventySix,
+            82  => ParValue::EightyTwo,
+            90  => ParValue::Ninety,
+            100 => ParValue::OneHundred,
+            _   => ParValue::UnknownParValue,
         }
     }
 }
@@ -971,7 +988,7 @@ pub fn place_tile_impl(
     // Always consume the request, whether or not it turns out to be valid.
     // FIXME. Who clears track_state?
 
-    let hex_name = game_state.track_state.hex_name;
+    let hex_name = game_state.track_state.hex_name.clone();
     let new_number = game_state.track_state.tile_chosen;
     let rotation = game_state.track_state.tile_rotation;
 
@@ -1313,6 +1330,8 @@ pub fn build_right_side_stock_ui(
         }
         if purchase_options.canBuyCert()
         {
+            game_state.current_par_value =
+                        ParValue::fromInteger(railroad.par_value as usize);
             let price = game_state.current_par_value as u32;
 
             if ui.button(format!("Buy {:?} cert for {}",
@@ -1633,12 +1652,12 @@ impl Plugin for Game1830Plugin {
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
             .add_systems(EguiPrimaryContextPass, 
-                (game_state_panel_left, game_state_panel_right) )
+                (game_state_panel_left, game_state_panel_right) );
 
         // Update systems run every frame
         // TODO: Add update systems when needed
         // .add_systems(Update, (advance_game_phase, determine_winner))
 
-            .add_systems(Update, place_tile) ;
+            //.add_systems(Update, place_tile) ;
     }
 }

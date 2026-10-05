@@ -51,7 +51,7 @@ pub struct MapTile {
     pub placed_tile: u32,
     pub market: HashMap<String, GridBox>,
 
-    pub track: [i32;6],
+    pub track: [usize;6],
 }
 
 /// Each hex on the board has a color that indicates what type of
@@ -731,6 +731,7 @@ pub fn spawn_routemap(
 
 pub fn handle_tile_clicks(
     mut contexts: EguiContexts,
+    mut game_state: ResMut<GameState>,
     buttons: Res<ButtonInput<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<super::MainCamera>>,
     windows: Query<&Window>,
@@ -767,6 +768,8 @@ info!("Is there a tile at {:?}", hex_coord);
             // Check if there's a tile at this coordinate
             for (tile, _transform) in tile_query.iter() {
                 if tile.coord == hex_coord {
+                    game_state.track_state.hex_name = tile.tile_name.clone();
+                    game_state.track_state.hex_chosen = true;
                     info!("Clicked on tile: {} at {:?}", tile.tile_name, hex_coord);
                 }
             }
