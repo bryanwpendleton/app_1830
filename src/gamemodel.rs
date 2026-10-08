@@ -303,6 +303,7 @@ pub struct TrackState {
     pub hex_chosen: bool,
     pub hex_name: String,
     pub tile_chosen: u32,
+    pub tile_choices: Vec<u32>,
     pub tile_rotation: usize,
 }
 
@@ -572,6 +573,7 @@ impl GameState {
                 hex_name: String::new(),
                 tile_chosen: 0,
                 tile_rotation: 0,
+                tile_choices: Vec::new(),
             },
 
             private_company_states: [0;6],
@@ -1411,8 +1413,19 @@ pub fn build_right_side_operating_ui(
         {
             ui.label(format!("On hex {}...",
                         game_state.track_state.hex_name));
-            // multi("Select a tile")
-            egui::ComboBox::from_label("Select tile rotation")
+            let tile_choices = game_state.track_state.tile_choices.clone();
+            egui::ComboBox::from_label("Select tile")
+                .selected_text(game_state.track_state.tile_chosen.to_string())
+                .show_ui(ui, |ui| {
+                    for tile_no in tile_choices
+                    {
+                        ui.selectable_value(
+                            &mut game_state.track_state.tile_chosen,
+                            tile_no, tile_no.to_string());
+                    }
+                }
+            );
+            egui::ComboBox::from_label("Select rotation")
                 .selected_text(game_state.track_state.tile_rotation.to_string())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(

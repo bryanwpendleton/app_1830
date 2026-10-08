@@ -52,6 +52,11 @@ pub struct MapTile {
     pub market: HashMap<String, GridBox>,
 
     pub track: [usize;6],
+
+    // For a tan/clear or yellow map hex, we show the valid first tiles
+    // that could be placed there. See the first 8 entries on the
+    // Tile Upgrade Chart at http://www.fwtwr.com/18xx/info/tuc-1830.asp
+    pub tile_choices: Vec<u32>,
 }
 
 /// Each hex on the board has a color that indicates what type of
@@ -169,6 +174,18 @@ pub enum TileColor {
     Green,
     Orange,
 }
+impl TileColor
+{
+    pub fn name(&self) -> &str
+    {
+        match self
+        {
+            TileColor::Yellow => "yellow",
+            TileColor::Green  => "green",
+            TileColor::Orange => "orange",
+        }
+    }
+}
 
 #[derive(Component)]
 struct TileRotation {
@@ -177,7 +194,11 @@ struct TileRotation {
 
 /// Marker of placement data
 #[derive(Component)]
-pub struct TilePlacementData;
+pub struct TilePlacementData
+{
+    color: TileColor,
+    upgrade_list: Vec<u32>,
+}
 
 /// Marker that a particular tile has a junction in its track
 #[derive(Component)]
@@ -497,203 +518,202 @@ pub fn spawn_routemap(
 
     let hexes = vec![
         (HexName::new("A9"),  Hex::new( 1, -5),  "A9", 
-            HexColor::Red, [0,0,1,0,0,0]),
+            HexColor::Red, [0,0,1,0,0,0], Vec::new()),
         (HexName::new("A11"), Hex::new( 2, -5), "A11", 
-            HexColor::Red, [0,0,1,1,0,0]),
+            HexColor::Red, [0,0,1,1,0,0], Vec::new()),
         (HexName::new("A17"), Hex::new( 5, -5), "A17", 
-            HexColor::Gray, [0,0,1,1,0,0]),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
         (HexName::new("A19"), Hex::new( 6, -5), "A19", 
-            HexColor::Gray, [0,0,1,1,0,0]),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
 
         (HexName::new("B10"), Hex::new( 1, -4), "blank_1large", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("B12"), Hex::new( 2, -4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("B14"), Hex::new( 3, -4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("B16"), Hex::new( 4, -4), "blank_1large", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("B18"), Hex::new( 5, -4), "B18", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("B20"), Hex::new( 6, -4), "B20", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![3,4,58]),
         (HexName::new("B22"), Hex::new( 7, -4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("B24"), Hex::new( 8, -4), "B24", 
-            HexColor::Red, [0,0,0,1,1,0]),
+            HexColor::Red, [0,0,0,1,1,0], Vec::new()),
 
         (HexName::new("C7"),  Hex::new(-1, -3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C9"),  Hex::new( 0, -3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C11"), Hex::new( 1, -3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C13"), Hex::new( 2, -3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C15"), Hex::new( 3, -3), "C15", 
-            HexColor::Gray, [1,0,0,0,1,0]),
+            HexColor::Gray, [1,0,0,0,1,0], Vec::new()),
         (HexName::new("C17"), Hex::new( 4, -3), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C19"), Hex::new( 5, -3), "C19", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C21"), Hex::new( 6, -3), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("C23"), Hex::new( 7, -3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
 
         (HexName::new("D2"),  Hex::new(-4, -2), "D2", 
-            HexColor::Gray, [0,1,1,0,0,0]),
+            HexColor::Gray, [0,1,1,0,0,0], Vec::new()),
         (HexName::new("D4"),  Hex::new(-3, -2), "blank_1small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![3,4,58]),
         (HexName::new("D6"),  Hex::new(-2, -2), "D6", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D8"),  Hex::new(-1, -2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D10"), Hex::new( 0, -2), "D10", 
-            HexColor::Yellow, [0;6]),
+            HexColor::Yellow, [0;6], vec![59]),
         (HexName::new("D12"), Hex::new( 1, -2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D14"), Hex::new( 2, -2), "D14", 
-            HexColor::Gray, [0,1,0,1,1,0]),
+            HexColor::Gray, [0,1,0,1,1,0], Vec::new()),
         (HexName::new("D16"), Hex::new( 3, -2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D18"), Hex::new( 4, -2), "D18", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D20"), Hex::new( 5, -2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D22"), Hex::new( 6, -2), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("D24"), Hex::new( 7, -2), "D24", 
-            HexColor::Gray, [0,0,0,1,1,0]),
+            HexColor::Gray, [0,0,0,1,1,0], Vec::new()),
 
         (HexName::new("E3"),  Hex::new(-4, -1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("E5"),  Hex::new(-3, -1), "E5", 
-            HexColor::Yellow, [0;6]),
+            HexColor::Yellow, [0;6], vec![59]),
         (HexName::new("E7"),  Hex::new(-2, -1), "blank_1small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![3,4,58]),
         (HexName::new("E9"),  Hex::new(-1, -1), "E9", 
-            HexColor::Gray, [1,0,0,0,0,1]),
+            HexColor::Gray, [1,0,0,0,0,1], Vec::new()),
         (HexName::new("E11"), Hex::new( 0, -1), "E11", 
-            HexColor::Yellow, [0;6]),
+            HexColor::Yellow, [0;6], vec![59]),
         (HexName::new("E13"), Hex::new( 1, -1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("E15"), Hex::new( 2, -1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("E17"), Hex::new( 3, -1), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("E19"), Hex::new( 4, -1), "E19", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("E21"), Hex::new( 5, -1), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("E23"), Hex::new( 6, -1), "E23", 
-            HexColor::Yellow, [1,0,1,0,0,0]),
+            HexColor::Yellow, [1,0,1,0,0,0], vec![53]),
 
         (HexName::new("F2"),  Hex::new(-5,  0), "F2", 
-            HexColor::Red, [1,1,1,0,0,0]),
+            HexColor::Red, [1,1,1,0,0,0], Vec::new()),
         (HexName::new("F4"),  Hex::new(-4,  0), "F4", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("F6"),  Hex::new(-3,  0), "F6", 
-            HexColor::Gray, [0,0,1,1,0,0]),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
         (HexName::new("F8"),  Hex::new(-2,  0), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("F10"), Hex::new(-1,  0), "blank_1small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![3,4,58]),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F12"), Hex::new( 0,  0), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F14"), Hex::new( 1,  0), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("F16"), Hex::new( 2,  0), "F16", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("F18"), Hex::new( 3,  0), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("F20"), Hex::new( 4,  0), "blank_2small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
         (HexName::new("F22"), Hex::new( 5,  0), "F22", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("F24"), Hex::new( 6,  0), "F24", 
-            HexColor::Gray, [0,0,0,0,1,1]),
+            HexColor::Gray, [0,0,0,0,1,1], Vec::new()),
 
         (HexName::new("G3"),  Hex::new(-5,  1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G5"),  Hex::new(-4,  1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G7"),  Hex::new(-3,  1), "blank_2small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
         (HexName::new("G9"),  Hex::new(-2,  1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G11"), Hex::new(-1,  1), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G13"), Hex::new( 0,  1), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G15"), Hex::new( 1,  1), "G15", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("G17"), Hex::new( 2,  1), "blank_2small", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
         (HexName::new("G19"), Hex::new( 3,  1), "G19", 
-            HexColor::Yellow, [1,0,0,1,0,0]),
+            HexColor::Yellow, [1,0,0,1,0,0], vec![54]),
 
         (HexName::new("H2"),  Hex::new(-6,  2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("H4"),  Hex::new(-5,  2), "blank_1large", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("H6"),  Hex::new(-4,  2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("H8"),  Hex::new(-3,  2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("H10"), Hex::new(-2,  2), "blank_1large", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("H12"), Hex::new(-1,  2), "H12", 
-            HexColor::Gray, [0,1,0,0,1,0]),
+            HexColor::Gray, [0,1,0,0,1,0], Vec::new()),
         (HexName::new("H14"), Hex::new( 0,  2), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("H16"), Hex::new( 1,  2), "blank_1large", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
         (HexName::new("H18"), Hex::new( 2,  2), "H18", 
-            HexColor::Yellow, [0;6]),
-
+            HexColor::Yellow, [0;6], vec![59]),
         (HexName::new("I1"),  Hex::new(-7,  3), "blank", 
-            HexColor::Red, [0,1,0,0,0,0]),
+            HexColor::Red, [0,1,0,0,0,0], Vec::new()),
         (HexName::new("I3"),  Hex::new(-6,  3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I5"),  Hex::new(-5,  3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I7"),  Hex::new(-4,  3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I9"),  Hex::new(-3,  3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I11"), Hex::new(-2,  3), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I13"), Hex::new(-1,  3), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I15"), Hex::new( 0,  3), "I15", 
-            HexColor::Yellow, [0,1,0,1,0,0]),
+            HexColor::Yellow, [0,1,0,1,0,0], vec![53]),
         (HexName::new("I17"), Hex::new( 1,  3), "I17", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("I19"), Hex::new( 2,  3), "I19", 
-            HexColor::Gray, [0,0,0,0,1,1]),
+            HexColor::Gray, [0,0,0,0,1,1], Vec::new()),
 
         (HexName::new("J2"),  Hex::new(-7,  4), "J2", 
-            HexColor::Red, [1,1,0,0,0,0]),
+            HexColor::Red, [1,1,0,0,0,0], Vec::new()),
         (HexName::new("J4"),  Hex::new(-6,  4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("J6"),  Hex::new(-5,  4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("J8"),  Hex::new(-4,  4), "blank", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("J10"), Hex::new(-3,  4), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("J12"), Hex::new(-2,  4), "blank_mountain", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![7,8,9]),
         (HexName::new("J14"), Hex::new(-1,  4), "J14", 
-            HexColor::Tan, [0;6]),
+            HexColor::Tan, [0;6], vec![57]),
 
         (HexName::new("K13"), Hex::new(-2,  5), "K13", 
-            HexColor::Red, [1,0,0,0,0,1]),
+            HexColor::Red, [1,0,0,0,0,1], Vec::new()),
         (HexName::new("K15"), Hex::new(-1,  5), "K15", 
-            HexColor::Gray, [0,0,0,0,0,1]),
+            HexColor::Gray, [0,0,0,0,0,1], Vec::new()),
     ];
 
     // For each hex in our game map, a MapTile component holds
@@ -705,7 +725,7 @@ pub fn spawn_routemap(
     // a hex -- by coordinate or by name -- to its entity,
     // then read/mutate the `MapTile` through a query.
 
-    for (hex_name, coord, tile_name, hcolor, tpattern) in hexes
+    for (hex_name, coord, tile_name, hcolor, tpattern, tile_list) in hexes
     {
         let world_pos = settings.hex_to_world_pos(coord);
 
@@ -721,11 +741,97 @@ pub fn spawn_routemap(
                 tile_name: tile_name.to_string(),
                 placed_tile: 0, // 0 = no track tile placed yet
                 track: tpattern,
+                tile_choices: tile_list,
             },
         )).id();
 
         game_state.tile_by_coord.insert(coord, entity);
         game_state.tile_by_name.insert(hex_name.name, entity);
+    }
+}
+
+// If no tile has yet been placed on this hex, use the MapTile data
+// to find out the available tile choices and set them in the track_state.
+// If there is already a tile on this hex, use the tile data
+// to find out the available tile choices and set them in the track_state.
+//
+// set rotation to zero in the track_state.
+//
+// set the image for the hex to show how it would look with this tile
+
+pub fn set_tile_choices_for_hex( game_state: &mut GameState,
+                    map_tile: & MapTile,
+                    sprite: &mut Sprite,
+                    placement: &Query<(&TilePlacementData, &TileTrack)>,
+                    asset_server: &AssetServer,
+) {
+    if map_tile.placed_tile == 0
+    {
+        // no tile has yet been placed on this hex
+
+        game_state.track_state.tile_choices = map_tile.tile_choices.clone();
+        let num_choices = game_state.track_state.tile_choices.len();
+        if num_choices != 0
+        {
+            game_state.track_state.tile_chosen = map_tile.tile_choices[0];
+            game_state.track_state.tile_rotation = 0;
+        }
+        else
+        {
+            info!("No tile can be placed on this hex");
+            return;
+        }
+    }
+    else
+    {
+        // a tile is already present on this hex
+
+        let new_number = map_tile.placed_tile;
+
+        let Some(&placement_entity) =
+            game_state.tile_placement_data_by_number.get( & new_number) else
+        {   
+            info!("No placement data for tile number {}", new_number);
+            return;
+        };
+        if let Ok(tile_data) = placement.get(placement_entity)  {
+            // info!("loaded placement data for tile number {}", new_number);
+            // tile_data.0 is a TilePlacementData, tile_data.1 is TileTrack
+ 
+            game_state.track_state.tile_choices =
+                                        tile_data.0.upgrade_list.clone();
+            let num_choices = game_state.track_state.tile_choices.len();
+            if num_choices != 0
+            {
+                game_state.track_state.tile_chosen =
+                                game_state.track_state.tile_choices[0];
+                game_state.track_state.tile_rotation = 0;
+            }
+            else
+            {
+                info!("This tile cannot be further upgraded");
+                return;
+            }
+        }
+    }
+
+    let new_number = game_state.track_state.tile_chosen;
+
+    let Some(&placement_entity) =
+        game_state.tile_placement_data_by_number.get( & new_number) else
+    {   
+        info!("No placement data for tile number {}", new_number);
+        return;
+    };
+    if let Ok(tile_data) = placement.get(placement_entity)  {
+        // info!("loaded placement data for tile number {}", new_number);
+        // tile_data.0 is a TilePlacementData, tile_data.1 is TileTrack
+
+        let image_path = format!("{}/T{}_base.png",
+            tile_data.0.color.name(),
+            new_number);
+
+        sprite.image = asset_server.load(image_path.clone());
     }
 }
 
@@ -735,8 +841,10 @@ pub fn handle_tile_clicks(
     buttons: Res<ButtonInput<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<super::MainCamera>>,
     windows: Query<&Window>,
-    tile_query: Query<(&MapTile, &Transform)>,
+    mut maptile_query: Query<(&MapTile, &mut Sprite, &Transform)>,
+    placement: Query<(&TilePlacementData, &TileTrack)>,
     settings: Res<HexSettings>,
+    asset_server: Res<AssetServer>,
 ) {
     // Don't treat clicks on the egui panel as map clicks.
     if let Ok(ctx) = contexts.ctx_mut() {
@@ -766,10 +874,16 @@ pub fn handle_tile_clicks(
 
 info!("Is there a tile at {:?}", hex_coord);
             // Check if there's a tile at this coordinate
-            for (tile, _transform) in tile_query.iter() {
+
+            for (tile, mut sprite, _transform) in maptile_query.iter_mut() {
                 if tile.coord == hex_coord {
                     game_state.track_state.hex_name = tile.tile_name.clone();
                     game_state.track_state.hex_chosen = true;
+                    set_tile_choices_for_hex(&mut game_state,
+                                            &tile,
+                                            &mut sprite,
+                                            &placement,
+                                            &asset_server);
                     info!("Clicked on tile: {} at {:?}", tile.tile_name, hex_coord);
                 }
             }
@@ -843,259 +957,397 @@ pub fn spawn_tile_placement_data(
 ) {
     game_state.tile_placement_data_by_number.insert(1,
         commands.spawn(( Tile { tile_number: 1 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(2,
         commands.spawn(( Tile { tile_number: 2 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(3,
         commands.spawn(( Tile { tile_number: 3 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,0,0,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(4,
         commands.spawn(( Tile { tile_number: 4 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(7,
         commands.spawn(( Tile { tile_number: 7 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: vec![18,26,27,28,29],
+                    },
                     TileTrack { track: [1,0,0,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(8,
         commands.spawn(( Tile { tile_number: 8 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: vec![16,19,23,24,25,28,29],
+                    },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(9,
         commands.spawn(( Tile { tile_number: 9 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: vec![18,19,20,23,24,26,27],
+                    },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(14,
         commands.spawn(( Tile { tile_number: 14 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![63],
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(15,
         commands.spawn(( Tile { tile_number: 15 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![63],
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(16,
         commands.spawn(( Tile { tile_number: 16 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![43,70],
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(18,
         commands.spawn(( Tile { tile_number: 18 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![43],
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(19,
         commands.spawn(( Tile { tile_number: 19 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![45,46],
+                    },
                     TileTrack { track: [1,1,0,1,0,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(20,
         commands.spawn(( Tile { tile_number: 20 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![44,47],
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(23,
         commands.spawn(( Tile { tile_number: 23 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![41,43,45,47],
+                    },
                     TileTrack { track: [0,0,1,1,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(24,
         commands.spawn(( Tile { tile_number: 24 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![42,43,46,47],
+                    },
                     TileTrack { track: [0,1,1,0,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(25,
         commands.spawn(( Tile { tile_number: 25 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![40,45,46],
+                    },
                     TileTrack { track: [0,1,0,1,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(26,
         commands.spawn(( Tile { tile_number: 26 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![42,44,45],
+                    },
                     TileTrack { track: [0,0,1,0,1,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(27,
         commands.spawn(( Tile { tile_number: 27 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![42,44,46],
+                    },
                     TileTrack { track: [1,0,1,0,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(28,
         commands.spawn(( Tile { tile_number: 28 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![39,43,46,70],
+                    },
                     TileTrack { track: [0,0,0,1,1,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(29,
         commands.spawn(( Tile { tile_number: 29 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![39,43,45,70],
+                    },
                     TileTrack { track: [1,1,0,0,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(39,
         commands.spawn(( Tile { tile_number: 39 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,0,0,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(40,
         commands.spawn(( Tile { tile_number: 40 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,0,1,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(41,
         commands.spawn(( Tile { tile_number: 41 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,0,1,1,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(42,
         commands.spawn(( Tile { tile_number: 42 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,0,1] },
                     TileHasJunction,
         )).id() );
     game_state.tile_placement_data_by_number.insert(43,
         commands.spawn(( Tile { tile_number: 43 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasJunction,
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(44,
         commands.spawn(( Tile { tile_number: 44 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasJunction,
                     TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.tile_placement_data_by_number.insert(45,
         commands.spawn(( Tile { tile_number: 45 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,1,0,1] },
                     TileHasJunction,
                     TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.tile_placement_data_by_number.insert(46,
         commands.spawn(( Tile { tile_number: 46 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,1,0,1] },
                     TileHasJunction,
                     TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.tile_placement_data_by_number.insert(47,
         commands.spawn(( Tile { tile_number: 47 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasJunction,
                     TileInventoryQuantity { quantity: 1 },
         )).id() );
     game_state.tile_placement_data_by_number.insert(53,
         commands.spawn(( Tile { tile_number: 53 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![61],
+                    },
                     TileTrack { track: [0,1,0,1,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(54,
         commands.spawn(( Tile { tile_number: 54 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![62],
+                    },
                     TileTrack { track: [1,0,0,1,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(55,
         commands.spawn(( Tile { tile_number: 55 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(56,
         commands.spawn(( Tile { tile_number: 56 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(57,
         commands.spawn(( Tile { tile_number: 57 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: vec![14,15],
+                    },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(58,
         commands.spawn(( Tile { tile_number: 58 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(59,
         commands.spawn(( Tile { tile_number: 59 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Green,
+                        upgrade_list: vec![64,65,66,67,68],
+                    },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(61,
         commands.spawn(( Tile { tile_number: 61 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,0,1,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(62,
         commands.spawn(( Tile { tile_number: 62 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,0,0,1,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(63,
         commands.spawn(( Tile { tile_number: 63 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,1,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(64,
         commands.spawn(( Tile { tile_number: 64 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,1,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(65,
         commands.spawn(( Tile { tile_number: 65 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,0,1,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(66,
         commands.spawn(( Tile { tile_number: 66 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(67,
         commands.spawn(( Tile { tile_number: 67 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,0,1,0,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(68,
         commands.spawn(( Tile { tile_number: 68 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
     game_state.tile_placement_data_by_number.insert(69,
         commands.spawn(( Tile { tile_number: 69 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Yellow,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,0,1,0,1] },
                     TileHasCrossover,
         )).id() );
     game_state.tile_placement_data_by_number.insert(70,
         commands.spawn(( Tile { tile_number: 70 },
-                    TilePlacementData,
+                    TilePlacementData {
+                        color: TileColor::Orange,
+                        upgrade_list: Vec::new(),
+                    },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasJunction,
                     TileHasCrossover,
