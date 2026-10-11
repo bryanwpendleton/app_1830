@@ -187,6 +187,61 @@ impl TileColor
     }
 }
 
+// How may different ways may this tile face? Equivalently, how many
+// possible rotations are there (one less than the number of facings)?
+
+pub enum TileFacings {
+    One = 1,
+    Two = 2,
+    Three = 3,
+    Six = 6,
+}
+impl TileFacings
+{
+    pub fn image_name(&self, rotation: usize) -> &str
+    {
+        match self
+        {
+            TileFacings::One => "base",
+            TileFacings::Two => {
+                match rotation
+                {
+                    0 => "base",
+                    1 => "f2",
+                    2 => "base",
+                    3 => "f2",
+                    4 => "base",
+                    5 => "f2",
+                    _ => "bad rotation",
+                }
+            },
+            TileFacings::Three => {
+                match rotation
+                {
+                    0 => "base",
+                    1 => "f2",
+                    2 => "f3",
+                    3 => "base",
+                    4 => "f2",
+                    5 => "f3",
+                    _ => "bad rotation",
+                }
+            },
+            TileFacings::Six => {
+                match rotation
+                {
+                    0 => "base",
+                    1 => "f2",
+                    2 => "f3",
+                    3 => "f4",
+                    4 => "f5",
+                    5 => "f6",
+                    _ => "bad rotation",
+                }
+            },
+        }
+    }
+}
 #[derive(Component)]
 struct TileRotation {
     rotation: usize,      // facing 3 means rotated twice.
@@ -196,8 +251,9 @@ struct TileRotation {
 #[derive(Component)]
 pub struct TilePlacementData
 {
-    color: TileColor,
-    upgrade_list: Vec<u32>,
+    pub color: TileColor,
+    pub upgrade_list: Vec<u32>,
+    pub facings: TileFacings,
 }
 
 /// Marker that a particular tile has a junction in its track
@@ -815,7 +871,16 @@ pub fn set_tile_choices_for_hex( game_state: &mut GameState,
         }
     }
 
+    update_map_for_new_track(game_state, sprite, placement, asset_server);
+}
+
+pub fn update_map_for_new_track( game_state: &mut GameState,
+                    sprite: &mut Sprite,
+                    placement: &Query<(&TilePlacementData, &TileTrack)>,
+                    asset_server: &AssetServer,
+) {
     let new_number = game_state.track_state.tile_chosen;
+    let rotation = game_state.track_state.tile_rotation;
 
     let Some(&placement_entity) =
         game_state.tile_placement_data_by_number.get( & new_number) else
@@ -827,9 +892,10 @@ pub fn set_tile_choices_for_hex( game_state: &mut GameState,
         // info!("loaded placement data for tile number {}", new_number);
         // tile_data.0 is a TilePlacementData, tile_data.1 is TileTrack
 
-        let image_path = format!("{}/T{}_base.png",
+        let image_path = format!("{}/T{}_{}.png",
             tile_data.0.color.name(),
-            new_number);
+            new_number,
+            tile_data.0.facings.image_name(rotation));
 
         sprite.image = asset_server.load(image_path.clone());
     }
@@ -878,6 +944,7 @@ info!("Is there a tile at {:?}", hex_coord);
             for (tile, mut sprite, _transform) in maptile_query.iter_mut() {
                 if tile.coord == hex_coord {
                     game_state.track_state.hex_name = tile.tile_name.clone();
+                    game_state.track_state.hex_coord = Some(hex_coord);
                     game_state.track_state.hex_chosen = true;
                     set_tile_choices_for_hex(&mut game_state,
                                             &tile,
@@ -960,6 +1027,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
@@ -968,6 +1036,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
@@ -976,6 +1045,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,0,0,0,0,1] },
         )).id() );
@@ -984,6 +1054,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
@@ -992,6 +1063,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: vec![18,26,27,28,29],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,0,0,0,0,1] },
         )).id() );
@@ -1000,6 +1072,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: vec![16,19,23,24,25,28,29],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
@@ -1008,6 +1081,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: vec![18,19,20,23,24,26,27],
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
@@ -1016,6 +1090,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![63],
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
@@ -1024,6 +1099,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![63],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
@@ -1032,6 +1108,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![43,70],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasCrossover,
@@ -1041,6 +1118,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![43],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
@@ -1049,6 +1127,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![45,46],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,0,1,0,1] },
                     TileHasCrossover,
@@ -1058,6 +1137,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![44,47],
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasCrossover,
@@ -1067,6 +1147,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![41,43,45,47],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,0,1,1,0,1] },
                     TileHasJunction,
@@ -1076,6 +1157,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![42,43,46,47],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,1,0,0,1] },
                     TileHasJunction,
@@ -1085,6 +1167,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![40,45,46],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,0,1,0,1] },
                     TileHasJunction,
@@ -1094,6 +1177,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![42,44,45],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,0,1,0,1,1] },
                     TileHasJunction,
@@ -1103,6 +1187,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![42,44,46],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,0,1,0,0,1] },
                     TileHasJunction,
@@ -1112,6 +1197,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![39,43,46,70],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,0,0,1,1,1] },
                     TileHasJunction,
@@ -1121,6 +1207,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![39,43,45,70],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,0,0,0,1] },
                     TileHasJunction,
@@ -1130,6 +1217,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,0,0,0,1] },
                     TileHasJunction,
@@ -1139,6 +1227,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Two,
                     },
                     TileTrack { track: [0,1,0,1,0,1] },
                     TileHasJunction,
@@ -1148,6 +1237,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,0,1,1,0,1] },
                     TileHasJunction,
@@ -1157,6 +1247,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,1,0,0,1] },
                     TileHasJunction,
@@ -1166,6 +1257,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasJunction,
@@ -1176,6 +1268,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasJunction,
@@ -1186,6 +1279,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,1,1,0,1] },
                     TileHasJunction,
@@ -1196,6 +1290,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,1,1,0,1] },
                     TileHasJunction,
@@ -1206,6 +1301,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasJunction,
@@ -1216,6 +1312,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![61],
+                        facings: TileFacings::Two,
                     },
                     TileTrack { track: [0,1,0,1,0,1] },
         )).id() );
@@ -1224,6 +1321,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![62],
+                        facings: TileFacings::One,
                     },
                     TileTrack { track: [1,0,0,1,1,1] },
         )).id() );
@@ -1232,6 +1330,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
                     TileHasCrossover,
@@ -1241,6 +1340,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasCrossover,
@@ -1250,6 +1350,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: vec![14,15],
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,0,1,0,0,1] },
         )).id() );
@@ -1258,6 +1359,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
@@ -1266,6 +1368,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Green,
                         upgrade_list: vec![64,65,66,67,68],
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,0,0,0,1] },
         )).id() );
@@ -1274,6 +1377,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six, // Not right, special case
                     },
                     TileTrack { track: [1,1,0,1,0,1] },
         )).id() );
@@ -1282,6 +1386,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::One,
                     },
                     TileTrack { track: [1,0,0,1,1,1] },
         )).id() );
@@ -1290,6 +1395,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::One,
                     },
                     TileTrack { track: [1,1,1,1,1,1] },
         )).id() );
@@ -1298,6 +1404,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,1,1,1] },
         )).id() );
@@ -1306,6 +1413,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [0,1,0,1,1,1] },
         )).id() );
@@ -1314,6 +1422,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
         )).id() );
@@ -1322,6 +1431,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,0,1,0,1] },
         )).id() );
@@ -1330,6 +1440,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Three,
                     },
                     TileTrack { track: [0,1,1,0,1,1] },
         )).id() );
@@ -1338,6 +1449,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Yellow,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,0,1,0,1] },
                     TileHasCrossover,
@@ -1347,6 +1459,7 @@ pub fn spawn_tile_placement_data(
                     TilePlacementData {
                         color: TileColor::Orange,
                         upgrade_list: Vec::new(),
+                        facings: TileFacings::Six,
                     },
                     TileTrack { track: [1,1,1,0,0,1] },
                     TileHasJunction,

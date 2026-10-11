@@ -17,6 +17,7 @@ use crate::routemap::TilePlacementData;
 use crate::routemap::TileTrack;
 use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
+use crate::routemap::update_map_for_new_track;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
 use crate::stockmarket::ShareValueToken;
@@ -300,8 +301,10 @@ pub struct OperatingState {
 // Tracks state during the laying of a new track tile
 
 pub struct TrackState {
+    pub constructing_track: bool,
     pub hex_chosen: bool,
     pub hex_name: String,
+    pub hex_coord: Option<Hex>,
     pub tile_chosen: u32,
     pub tile_choices: Vec<u32>,
     pub tile_rotation: usize,
@@ -569,8 +572,10 @@ impl GameState {
                 action_performed: RailroadOperation::None,
             },
             track_state: TrackState {
+                constructing_track: false,
                 hex_chosen: false,
                 hex_name: String::new(),
+                hex_coord: None,
                 tile_chosen: 0,
                 tile_rotation: 0,
                 tile_choices: Vec::new(),
@@ -1054,20 +1059,25 @@ pub fn place_tile_impl(
             new_number, new_q.quantity);
     }
 
-    let mut image_path = "unknown";
     // placement data with track pattern and other placement details:
     if let Ok(tile_data) = placement.get(placement_entity)  {
         // info!("loaded placement data for tile number {}", new_number);
         map_tile.track = tile_data.1.rotate_tile_track(rotation);
-        // FIXME image_path = tile_data.1.get_tile_image(rotation);
+
+        map_tile.placed_tile = new_number;
+
+        let image_path = format!("{}/T{}_{}.png",
+            tile_data.0.color.name(),
+            new_number,
+            tile_data.0.facings.image_name(rotation));
+
+        sprite.image = asset_server.load(image_path.clone());
+        info!("Placed tile {} on {} (image {})",
+                                    new_number, hex_name, image_path);
     } else {
         info!("Unable to find placement data for tile number {}", new_number);
         return;
     };
-
-    map_tile.placed_tile = new_number;
-    sprite.image = asset_server.load(image_path.clone());
-    info!("Placed tile {} on {} (image {})", new_number, hex_name, image_path);
 }
 
 /// Renders the game info panel bound to [`GameState`].
@@ -1080,6 +1090,10 @@ pub fn game_state_panel_right(
     mut contexts: EguiContexts,
     mut players: Query<&mut Player>,
     mut game_state: ResMut<GameState>,
+    mut hexes: Query<(&mut Sprite, &mut MapTile)>,
+    mut inventory: Query<&mut TileInventoryQuantity>,
+    placement: Query<(&TilePlacementData,&TileTrack)>,
+    asset_server: Res<AssetServer>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
 
@@ -1099,6 +1113,7 @@ pub fn game_state_panel_right(
             ui.heading("1830");
             ui.separator();
 
+            game_state.track_state.constructing_track = false;
             if game_state.phase == GamePhase::PurchasePrivateCompanies
             {
                 build_right_side_privatecompany_ui(
@@ -1112,7 +1127,9 @@ pub fn game_state_panel_right(
             else
             {
                 build_right_side_operating_ui(
-                        &mut commands, ui, &mut players, &mut game_state);
+                        &mut commands, ui, &mut players, &mut game_state,
+                        & mut hexes, &mut inventory,
+                        &placement, &asset_server);
             }
 
             ui.separator();
@@ -1369,8 +1386,12 @@ pub fn build_right_side_operating_ui(
             commands: &mut Commands,
             ui: &mut Ui,
             players: &mut Query<& mut Player>,
-            game_state: & mut GameState)
-{
+            game_state: & mut GameState,
+            mut hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
+            mut inventory: & mut Query<&mut TileInventoryQuantity>,
+            placement: &Query<(&TilePlacementData,&TileTrack)>,
+            asset_server:  & AssetServer,
+) {
     let Some(mut current_railroad) =
         game_state.operating_state.order.get(game_state.operating_state.cur_rr)
     else {
@@ -1405,6 +1426,7 @@ pub fn build_right_side_operating_ui(
             return;
         }
 
+        game_state.track_state.constructing_track = true;
         if !game_state.track_state.hex_chosen
         {
             ui.label("Click on the map...");
@@ -1448,9 +1470,29 @@ pub fn build_right_side_operating_ui(
                         5, "5");
             });
 
+            match game_state.track_state.hex_coord {
+                Some(hex_coord) => {
+                    for (mut sprite, tile) in hexes.iter_mut() {
+                        if tile.coord == hex_coord {
+                            update_map_for_new_track(game_state, &mut sprite,
+                                            placement, asset_server);
+                        }
+                    }
+                }
+                None => {
+                    info!("No hex_coord for chosen tile?");
+                }
+            }
+
             if ui.button("Confirm tile placement").clicked()
             {
-                // place_tile_impl()
+                place_tile_impl(
+                    game_state,
+                    hexes,
+                    inventory,
+                    &placement,
+                    &asset_server,
+                );
                 game_state.operating_state.action_performed =
                                 RailroadOperation::ConstructTrack;
                 return;
