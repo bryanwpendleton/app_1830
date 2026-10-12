@@ -1502,6 +1502,32 @@ pub fn find_path(
     a_star(*start, *end, cost)
 }
 
+// Determine the best (highest revenue) train routes that the
+// currently-operating railroad can provide on the current map,
+// and record the resulting revenue in the GameState.
+
+pub fn run_trains(game_state: & mut GameState)
+{
+    let Some(mut current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {      
+        return; 
+    };      
+            
+    let rr_idx = current_railroad.rr_idx;
+    let railroad = &game_state.railroads[rr_idx];
+
+    // a special case: the railroad has no trains at this time
+    if railroad.assets.trains.len() == 0
+    {
+        game_state.operating_state.operating_revenue = 0;
+        info!("This railroad has no trains, so it produces no revenue");
+        return;
+    }
+
+    info!("run_trains is not implemented yet.");
+}
+
 /// System to perform some simple routefinding tests on the empty
 /// map present at startup. Since this leaves the game map modified,
 /// it will be removed once the routefinding module is stabilized.

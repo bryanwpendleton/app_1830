@@ -18,6 +18,7 @@ use crate::routemap::TileTrack;
 use crate::routemap::TileHasCrossover;
 use crate::routemap::TileHasJunction;
 use crate::routemap::update_map_for_new_track;
+use crate::routemap::run_trains;
 use crate::stockmarket::GridBox;
 use crate::stockmarket::StockMarketCell;
 use crate::stockmarket::ShareValueToken;
@@ -27,6 +28,9 @@ use crate::stockmarket::stock_round_pass_impl;
 use crate::stockmarket::buy_railroad_impl;
 use crate::stockmarket::PurchaseDecision;
 use crate::stockmarket::set_operating_order;
+use crate::stockmarket::place_station_marker;
+use crate::stockmarket::pay_dividend;
+use crate::stockmarket::reinvest_revenue;
 use crate::privco::NUM_PRIVATE_COMPANIES;
 use crate::privco::PlayerBid;
 use crate::privco::PrivateCompanyAuctionSubphase;
@@ -239,14 +243,14 @@ impl Certificate
     }
 }
 
-// who holds the president's certificate for cur_rr?
+// who holds the president's certificate for rr_idx?
 
 pub fn president_of(
             game_state: & GameState,
             players: &mut Query<& mut Player>,
-            cur_rr: usize) -> usize
+            rr_idx: usize) -> usize
 {
-    let cert_we_want = match cur_rr
+    let cert_we_want = match rr_idx
     {
         0 => Certificate::C_PC_PRR,
         1 => Certificate::C_PC_NYC,
@@ -269,7 +273,7 @@ pub fn president_of(
             }
         }
     }
-    info!("Failed to find the present of railroad {}", cur_rr);
+    info!("Failed to find the present of railroad {}", rr_idx);
     return 0;
 }
 
@@ -287,7 +291,7 @@ pub struct MarketState {
 
 pub struct OperatingRailroad
 {
-    pub rr_idx: usize,
+    pub rr_idx: usize, // railroad's position in game_state.railroads
     pub grid_position: GridBox,
     pub z_order: u32,
 }
@@ -296,6 +300,7 @@ pub struct OperatingState {
     pub order: Vec<OperatingRailroad>, // floated railroads in operating order
     pub cur_rr: usize, // current position in the 'order' vector
     pub action_performed: RailroadOperation,
+    pub operating_revenue: u32, // how much revenue the RR produced this turn
 }
 
 // Tracks state during the laying of a new track tile
@@ -570,6 +575,7 @@ impl GameState {
                 order: Vec::new(),
                 cur_rr: 0,
                 action_performed: RailroadOperation::None,
+                operating_revenue: 0,
             },
             track_state: TrackState {
                 constructing_track: false,
@@ -810,6 +816,17 @@ impl GameState {
             GamePhase::DieselTrains => "Diesel Trains",
             GamePhase::EndGame => "End Game",
         }
+    }
+
+    pub fn reset_track_state(&mut self)
+    {
+        self.track_state.constructing_track = false;
+        self.track_state.hex_chosen = false;
+        self.track_state.hex_name = String::new();
+        self.track_state.hex_coord = None;
+        self.track_state.tile_chosen = 0;
+        self.track_state.tile_rotation = 0;
+        self.track_state.tile_choices = Vec::new();
     }
 }
 
@@ -1398,10 +1415,11 @@ pub fn build_right_side_operating_ui(
         return;
     };
 
-    let railroad = &game_state.railroads[game_state.operating_state.cur_rr];
+    let rr_idx = current_railroad.rr_idx;
+    let railroad = &game_state.railroads[rr_idx];
     let rr_name = railroad.name.clone();
     let current_player_idx =
-        president_of(game_state, players, game_state.operating_state.cur_rr);
+        president_of(game_state, players, rr_idx);
     let current_player_ety = game_state.player_by_player_id[current_player_idx];
     let Ok(mut current_player) = players.get_mut(current_player_ety) else {
         return;
@@ -1421,6 +1439,7 @@ pub fn build_right_side_operating_ui(
     {
         if ui.button("Skip track construction").clicked()
         {
+            game_state.reset_track_state();
             game_state.operating_state.action_performed =
                                         RailroadOperation::ConstructTrack;
             return;
@@ -1493,6 +1512,7 @@ pub fn build_right_side_operating_ui(
                     &placement,
                     &asset_server,
                 );
+                game_state.reset_track_state();
                 game_state.operating_state.action_performed =
                                 RailroadOperation::ConstructTrack;
                 return;
@@ -1500,23 +1520,24 @@ pub fn build_right_side_operating_ui(
         }
         return;
     }
-/*
     if game_state.operating_state.action_performed ==
                                         RailroadOperation::ConstructTrack
     {
-        if button("Skip station marker placement")
+        if ui.button("Skip station marker placement").clicked()
         {
+            game_state.reset_track_state();
             game_state.operating_state.action_performed =
                                     RailroadOperation::PlaceStation;
             return;
         }
         if !game_state.track_state.hex_chosen
         {
-            label("Click on the map...")
+            ui.label("Click to set a new station marker");
         }
         else
         {
-            place_station_marker();
+            place_station_marker(game_state);
+            game_state.reset_track_state();
             game_state.operating_state.action_performed =
                                         RailroadOperation::PlaceStation;
             return;
@@ -1526,7 +1547,7 @@ pub fn build_right_side_operating_ui(
     if game_state.operating_state.action_performed ==
                                         RailroadOperation::PlaceStation
     {
-        run_trains();
+        run_trains(game_state);
         game_state.operating_state.action_performed =
                                         RailroadOperation::RunTrains;
         return;
@@ -1534,34 +1555,47 @@ pub fn build_right_side_operating_ui(
     if game_state.operating_state.action_performed ==
                                         RailroadOperation::RunTrains
     {
-        if button("Reinvest {}", ).clicked
+        ui.label(format!("Railroad revenue: {}",
+                    game_state.operating_state.operating_revenue));
+
+        if game_state.operating_state.operating_revenue == 0
         {
-            reinvest_revenue();
+            ui.label("No revenue, no dividend");
+        }
+        else if ui.button(format!("Declare dividend of {}",
+                    game_state.operating_state.operating_revenue)).clicked()
+        {
+            pay_dividend(game_state, players);
             game_state.operating_state.action_performed =
-                                        RailroadOperation::ProcessRevenue;
+                                    RailroadOperation::MakeDividendDecision;
             return;
         }
-        else if button("Declare divident of {}").clicked()
+
+        if ui.button(format!("Reinvest {}",
+                    game_state.operating_state.operating_revenue)).clicked()
         {
-            pay_dividend();
+            reinvest_revenue(game_state);
             game_state.operating_state.action_performed =
-                                        RailroadOperation::ProcessRevenue;
+                                    RailroadOperation::MakeDividendDecision;
             return;
         }
     }
     if game_state.operating_state.action_performed ==
-                                        RailroadOperation::ProcessRevenue
+                                    RailroadOperation::MakeDividendDecision
     {
-        label("Purchase train?");
+        ui.label("Purchase train?");
+
+// combo box of available trains and their cost.
         
         if ui.button("Pass").clicked()
         {
+/*
             end_operating_turn( commands, game_state,
                                 players, current_order);
+*/
             return;
         }
     }
-*/
 }
 
 

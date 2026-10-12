@@ -179,6 +179,14 @@ pub fn check_if_floated(commands: & Commands, game_state: & mut GameState,
             railroad.name, railroad.certificates_remaining);
 }
 
+// Place a station marker for game_state.operating_state.cur_rr on
+// the city in the hex chosen in game_state.track_state
+
+pub fn place_station_marker(game_state: & mut GameState)
+{
+    info!("Station markers are not implemented yet.");
+}
+
 pub fn get_max_zorder(game_state: & GameState,
                                 start_pos : &str,
                                 this_rr: usize) -> u32
@@ -239,6 +247,91 @@ pub fn place_share_value_token(game_state: & mut GameState,
                                         grid_box: start_pos.to_string(),
                                         z_order: z_order,
     };
+}
+
+// The current railroad has run its trains and earned some revenue, and
+// the president has decided to pay a dividend to the stockholders.
+// The revenue is paid out to the stockholders (10% for each 10% share held).
+// Shares in the bank pool pay dividends to the corporate treasury.
+// No payments are made for unsold initial offering shares.
+//
+// A corporation’s share value token moves right 1 grid box
+// when that corporation declares a dividend. If it is already
+// at the right end of a row the token moves up one grid box
+// if possible. A share value token does not move up if it is
+// already at 350. 
+
+pub fn pay_dividend(game_state: & mut GameState,
+                                players: &mut Query<& mut Player>)
+{
+    let Some(current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {      
+        return; 
+    };      
+
+    let rr_idx = current_railroad.rr_idx;
+    let mut railroad = &mut game_state.railroads[rr_idx];
+
+    info!("{} earned {} and is paying dividends",
+            railroad.name, game_state.operating_state.operating_revenue);
+
+    let dividend = game_state.operating_state.operating_revenue / 10;
+
+    for mut player in players
+    {
+        let paid = player.assets.corporations[rr_idx] * dividend;
+
+        if paid > 0
+        {
+            player.assets.personal_money += paid;
+            info!("{} owns {} shares and received {}",
+                player.name, player.assets.corporations[rr_idx], paid);
+        }
+    }
+
+    info!("Bank pool could recive dividends? Not implemented yet");
+
+    let mut svt = &mut railroad.assets.share_value_token;
+    let gb = &game_state.market[&svt.grid_box];
+
+    info!("Paying dividend caused share price to go from {} to {}",
+            svt.grid_box, gb.right);
+
+    svt.grid_box = gb.right.clone();
+}
+
+// The current railroad has run its trains and the president has decided
+// to reinvest the revenue in the railroad.
+//
+// A corporation’s share value token moves left 1 grid box
+// when it fails to declare a dividend during a given operating
+// round. If it is already at the left end of a row the token moves
+// down one grid box if possible. Otherwise, it does not move.
+
+pub fn reinvest_revenue(game_state: & mut GameState)
+{
+    let Some(current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {      
+        return; 
+    };      
+
+    let rr_idx = current_railroad.rr_idx;
+    let mut railroad = &mut game_state.railroads[rr_idx];
+
+    info!("{} earned {} and is reinvesting the revenue",
+            railroad.name, game_state.operating_state.operating_revenue);
+
+    let dividend = game_state.operating_state.operating_revenue;
+
+    let mut svt = &mut railroad.assets.share_value_token;
+    let gb = &game_state.market[&svt.grid_box];
+
+    info!("Reinvesting caused share price to go from {} to {}",
+            svt.grid_box, gb.left);
+
+    svt.grid_box = gb.left.clone();
 }
 
 pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
@@ -399,14 +492,15 @@ pub fn set_operating_order(
     }
     game_state.operating_state.order.sort_by(compare_operating_order);
     game_state.operating_state.cur_rr = 0;
-    if game_state.operating_state.order.len() > 0
-    {
-        game_state.operating_state.cur_rr = 
-            game_state.operating_state.order[0].rr_idx;
-    }
 
     info!("Computed {} railroads are ready to operate this round",
                 game_state.operating_state.order.len());
+
+    for operating_railroad in &game_state.operating_state.order
+    {
+        let railroad = &game_state.railroads[operating_railroad.rr_idx];
+        info!("{} will operate", railroad.name);
+    }
 }
 
 /// System to initialize the Stock Market grid at game start.
