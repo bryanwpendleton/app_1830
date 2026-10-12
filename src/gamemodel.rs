@@ -460,6 +460,11 @@ impl PrivateCompany
 
 }
 
+// Trains have a type. The type of the train also determines:
+// - the train's range (number of cities it can include in its route)
+// - the cost to buy the train from the bank
+// - the number of trains of that type that the bank has
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Train {
     Two = 2,
@@ -468,6 +473,33 @@ pub enum Train {
     Five = 5,
     Six = 6,
     Diesel = 7,
+}
+impl Train
+{
+    pub fn range(&self) -> u32
+    {
+        match self
+        {
+            Train::Two => 2,
+            Train::Three => 3,
+            Train::Four => 4,
+            Train::Five => 5,
+            Train::Six => 6,
+            Train::Diesel => 64, // "unlimited", actually.
+        }
+    }
+    pub fn cost(&self) -> u32
+    {
+        match self
+        {
+            Train::Two => 80,
+            Train::Three => 180,
+            Train::Four => 300,
+            Train::Five => 450,
+            Train::Six => 630,
+            Train::Diesel => 1100,
+        }
+    }
 }
 
 // CurrentPCAuction holds the state for resolving an auction for
@@ -506,9 +538,10 @@ pub enum RailroadOperation
 #[derive(Resource)]
 pub struct GameState {
     pub phase: GamePhase,
-    pub bank: u32,
+    pub bank: u32, // when the bank runs out of money, the game is over
     pub num_players: u32, // 2-6
     pub certificate_limit: usize, // varies depending on num_players
+    pub trains_left: [u32;6], // the bank may run out of trains
 
     pub round_state: RoundState,
 
@@ -560,6 +593,7 @@ impl GameState {
             bank: 12000 - 2400, // 2400 is the initial money for the players.
             num_players: 0,
             certificate_limit: 0,
+            trains_left: [6,5,4,3,2,6], // to start: 6 2-trains,5 3-trains,etc
             round_state: RoundState::StockRound,
             priority_deal_card_holder : Entity::PLACEHOLDER,
             current_player : Entity::PLACEHOLDER,
@@ -1583,21 +1617,83 @@ pub fn build_right_side_operating_ui(
     if game_state.operating_state.action_performed ==
                                     RailroadOperation::MakeDividendDecision
     {
-        ui.label("Purchase train?");
+        ui.label("Purchase train or pass?");
 
-// combo box of available trains and their cost.
+        let train = next_available_train(game_state);
+
+        if ui.button(format!("Buy range {} train for {}",
+                    train.range(), train.cost())).clicked()
+        {
+            buy_train(game_state, train);
+
+            // The RR is allowed to buy more than one train in its turn
+            // so we don't immediately advance to the next RR at this point
+
+            return;
+        }
         
         if ui.button("Pass").clicked()
         {
-/*
-            end_operating_turn( commands, game_state,
-                                players, current_order);
-*/
+            end_operating_turn( commands, game_state );
             return;
         }
     }
 }
 
+pub fn next_available_train(game_state: &mut GameState) -> Train
+{
+    // Trains are bought in order of increasing range
+
+    if game_state.trains_left[0] > 0
+    {
+        return Train::Two;
+    }
+    if game_state.trains_left[1] > 0
+    {
+        return Train::Three;
+    }
+    if game_state.trains_left[2] > 0
+    {
+        return Train::Four;
+    }
+    if game_state.trains_left[3] > 0
+    {
+        return Train::Five;
+    }
+    if game_state.trains_left[4] > 0
+    {
+        return Train::Six;
+    }
+    return Train::Diesel;
+}
+
+pub fn buy_train(game_state: &mut GameState, train: Train)
+{
+    // Railroad spends money
+    // Railroad assets updated to show it owns train
+    // One less train remaining in the bank
+
+    info!("buy_train not implemented");
+}
+
+// When this railroad finishes its operating turn, advance to the next
+// railroad or end this operating round.
+
+pub fn end_operating_turn(
+    commands: &mut Commands,
+    game_state: &mut GameState)
+{
+    game_state.operating_state.cur_rr += 1;
+    game_state.operating_state.action_performed = RailroadOperation::None;
+    game_state.operating_state.operating_revenue = 0;
+    game_state.reset_track_state();
+
+    if game_state.operating_state.cur_rr >= 
+                                game_state.operating_state.order.len()
+    {
+        commands.set_state(RoundState::StockRound);
+    }
+}
 
 pub fn game_state_panel_left(
     mut contexts: EguiContexts,
