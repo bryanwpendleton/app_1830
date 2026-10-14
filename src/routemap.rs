@@ -44,6 +44,13 @@ pub struct HexName {
 pub struct MapTile {
     pub coord: Hex,
     pub hex_color: HexColor,
+
+    // hex_name is a row/column name of the Cell, often used for
+    // indexing into other data structures. tile_name is a sprite
+    // name, used to load the proper visualization for the map
+    // So, e.g., hex_name G5 has tile_name blank, while
+    // hex_name J14 which has a custom visual as tile_name J14.
+
     pub hex_name: HexName,
     pub tile_name: String,
     /// The `tile_number` of the [`Tile`] currently laid on this hex, or
@@ -264,6 +271,35 @@ pub struct TileHasJunction;
 #[derive(Component)]
 pub struct TileHasCrossover;
 
+// The notion of a City is very important for computing routes.
+// A route must include two or more cities that are connected by track.
+// The train generates revenue based upon the values of the cities on
+// that route. “city” refers to a large city, a small city,
+// or an off-board red hex. 
+//
+// The locations and types of cities is fixed. 
+//
+// Each city has a revenue value. When a train runs, it generates
+// revenue equal to the sum of the revenue values of all of the cities
+// (a minimum of 2) on its route. Each of the red off-board areas
+// has two values. Initially, use the lesser values. After the first
+// 5-train is purchased, use the greater values.
+pub enum CityType
+{
+    LargeCity,
+    SmallCity,
+    RedHex,
+}
+pub struct City
+{
+    city_type: CityType,
+    hex: String, // e.g., "A19"
+    name: String, // e.g., "Baltimore", "Chicago", "Gulf"
+    value: u32,
+    value_phase_five: u32, // only for RedHex, means value starting in phase 5
+}
+    
+
 /// How many copies of a given track tile remain available to be placed.
 ///
 /// Each Tile has its own current inventory, which determines
@@ -477,6 +513,334 @@ pub fn spawn_tracktile_inventory(
             game_state.inventory_by_number.len());
 }
 
+fn load_cities(game_state: & mut GameState)
+{
+    game_state.cities.insert("A9".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "A9".to_string(),
+            name: "Canadian West".to_string(),
+            value: 30,
+            value_phase_five: 50,
+        });
+    game_state.cities.insert("A11".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "A11".to_string(),
+            name: "Canadian West".to_string(),
+            value: 30,
+            value_phase_five: 50,
+        });
+    game_state.cities.insert("A19".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "A19".to_string(),
+            name: "Montreal".to_string(),
+            value: 40,
+            value_phase_five: 40,
+        });
+    game_state.cities.insert("B10".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "B10".to_string(),
+            name: "B10".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("B16".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "B16".to_string(),
+            name: "B16".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("B20".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "B20".to_string(),
+            name: "B20".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("B24".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "B24".to_string(),
+            name: "Maritime Province".to_string(),
+            value: 20,
+            value_phase_five: 30,
+        });
+    game_state.cities.insert("C15".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "C15".to_string(),
+            name: "C15".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("D2".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "D2".to_string(),
+            name: "D2".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("D4".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "D4".to_string(),
+            name: "D4".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("D10".to_string(),
+        City {
+            city_type: CityType::LargeCity, // This is a O-O map hex
+            hex: "D10".to_string(),
+            name: "D10".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("D14".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "D14".to_string(),
+            name: "D14".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("E5".to_string(),
+        City {
+            city_type: CityType::LargeCity, // This is a O-O map hex
+            hex: "E5".to_string(),
+            name: "E5".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("E7".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "E7".to_string(),
+            name: "E7".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("E11".to_string(),
+        City {
+            city_type: CityType::LargeCity, // This is a O-O map hex
+            hex: "E11".to_string(),
+            name: "Erie".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("E19".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "E19".to_string(),
+            name: "Albany".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("E23".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "E23".to_string(),
+            name: "Boston".to_string(),
+            value: 30,
+            value_phase_five: 30,
+        });
+    game_state.cities.insert("F2".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "F2".to_string(),
+            name: "Chicago".to_string(),
+            value: 40,
+            value_phase_five: 70,
+        });
+    game_state.cities.insert("F4".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "F4".to_string(),
+            name: "F4".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("F6".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "F6".to_string(),
+            name: "Cleveland".to_string(),
+            value: 30,
+            value_phase_five: 30,
+        });
+    game_state.cities.insert("F10".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "F10".to_string(),
+            name: "F10".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("F16".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "F16".to_string(),
+            name: "F16".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("F20".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "F20".to_string(),
+            name: "F20".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("F22".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "F22".to_string(),
+            name: "F22".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("F24".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "F24".to_string(),
+            name: "F24".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("G7".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "G7".to_string(),
+            name: "G7".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("G17".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "G17".to_string(),
+            name: "G17".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("G19".to_string(),
+        City {
+            city_type: CityType::LargeCity, // This is New York City special
+            hex: "G19".to_string(),
+            name: "New York City".to_string(),
+            value: 40,
+            value_phase_five: 40,
+        });
+    game_state.cities.insert("H4".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "H4".to_string(),
+            name: "H4".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("H10".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "H10".to_string(),
+            name: "H10".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("H12".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "H12".to_string(),
+            name: "Altoona".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("H16".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "H16".to_string(),
+            name: "H16".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("H18".to_string(),
+        City {
+            city_type: CityType::LargeCity, // This is a O-O map hex
+            hex: "H18".to_string(),
+            name: "H18".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("I1".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "I1".to_string(),
+            name: "Gulf".to_string(),
+            value: 30,
+            value_phase_five: 60,
+        });
+    game_state.cities.insert("I15".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "I15".to_string(),
+            name: "Baltimore".to_string(),
+            value: 30,
+            value_phase_five: 30,
+        });
+    game_state.cities.insert("I19".to_string(),
+        City {
+            city_type: CityType::SmallCity,
+            hex: "I19".to_string(),
+            name: "I19".to_string(),
+            value: 10,
+            value_phase_five: 10,
+        });
+    game_state.cities.insert("J2".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "J2".to_string(),
+            name: "Gulf".to_string(),
+            value: 30,
+            value_phase_five: 60,
+        });
+    game_state.cities.insert("J14".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "J14".to_string(),
+            name: "J14".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+    game_state.cities.insert("K13".to_string(),
+        City {
+            city_type: CityType::RedHex,
+            hex: "K13".to_string(),
+            name: "Deep South".to_string(),
+            value: 30,
+            value_phase_five: 40,
+        });
+    game_state.cities.insert("K15".to_string(),
+        City {
+            city_type: CityType::LargeCity,
+            hex: "K15".to_string(),
+            name: "K15".to_string(),
+            value: 20,
+            value_phase_five: 20,
+        });
+
+
+
+    info!("loaded cities with {} entities", game_state.cities.len());
+}
+
 #[derive(Resource)]
 pub struct HexSettings {
     pub layout: HexLayout,
@@ -505,7 +869,8 @@ impl HexSettings {
     pub fn world_pos_to_hex(&self, pos: hexx::Vec2) -> Hex {
         let hex = self.layout.world_pos_to_hex(pos);
 
-info!("location of worldPos {},{} is {:?}", pos.x,pos.y,hex);
+    // info!("location of worldPos {},{} is {:?}", pos.x,pos.y,hex);
+
         hex
     }
 }
@@ -804,6 +1169,8 @@ pub fn spawn_routemap(
         game_state.tile_by_coord.insert(coord, entity);
         game_state.tile_by_name.insert(hex_name.name, entity);
     }
+
+    load_cities(&mut game_state);
 }
 
 // If no tile has yet been placed on this hex, use the MapTile data
@@ -938,12 +1305,14 @@ pub fn handle_tile_clicks(
             let hex_pos = hexx::Vec2::new(world_pos.x as f32, world_pos.y as f32);
             let hex_coord = settings.world_pos_to_hex(hex_pos);
 
-info!("Is there a tile at {:?}", hex_coord);
+            // info!("Is there a tile at {:?}", hex_coord);
             // Check if there's a tile at this coordinate
 
             for (tile, mut sprite, _transform) in maptile_query.iter_mut() {
                 if tile.coord == hex_coord {
-                    game_state.track_state.hex_name = tile.tile_name.clone();
+                    game_state.track_state.hex_name =
+                                            tile.hex_name.name.clone();
+                    game_state.track_state.tile_name = tile.tile_name.clone();
                     game_state.track_state.hex_coord = Some(hex_coord);
                     game_state.track_state.hex_chosen = true;
                     set_tile_choices_for_hex(&mut game_state,
@@ -1467,7 +1836,7 @@ pub fn spawn_tile_placement_data(
         )).id() );
 }
 pub fn find_path(
-    game_state: &mut GameState,
+    game_state: & GameState,
     hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
     start: &Hex,
     end: &Hex,
@@ -1506,7 +1875,8 @@ pub fn find_path(
 // currently-operating railroad can provide on the current map,
 // and record the resulting revenue in the GameState.
 
-pub fn run_trains(game_state: & mut GameState)
+pub fn run_trains(game_state: & mut GameState,
+            mut hexes: &mut Query<(&mut Sprite, &mut MapTile)> )
 {
     let Some(mut current_railroad) =
         game_state.operating_state.order.get(game_state.operating_state.cur_rr)
@@ -1525,7 +1895,62 @@ pub fn run_trains(game_state: & mut GameState)
         return;
     }
 
-    info!("run_trains is not implemented yet.");
+    //
+    // I think I want this to be something like:
+    // - generate all possible routes on the current map
+    // - discard any route which violates the various rules and constraints,
+    //   so we only have the routes which this railroad could run
+    // - compute the revenue of each route,
+    // - pick the combination of routes which gives the highest revenue.
+    //
+
+    let num_cities : usize = game_state.cities.len();
+    let city_hexes: Vec<&String> = game_state.cities.keys().collect();
+
+    let mut start_city : usize = 0;
+    while start_city < num_cities
+    {
+        let start_hex_name = city_hexes[start_city].clone();
+        let Some(&start_hex_entity) =
+                    game_state.tile_by_name.get(start_hex_name.as_str()) else {
+            info!("No tile named {}", start_hex_name);
+            return;
+        };  
+        let Ok((_, start_map_tile)) = hexes.get(start_hex_entity) else {
+            info!("Map tile entity for {} missing", start_hex_name);
+            return;
+        };      
+        let start_coord = start_map_tile.coord.clone();
+
+        let mut end_city : usize = start_city + 1;
+
+        while end_city < num_cities
+        {
+            let end_hex_name = city_hexes[end_city].clone();
+            let Some(&end_hex_entity) =
+                    game_state.tile_by_name.get(end_hex_name.as_str()) else {
+                info!("No tile named {}", end_hex_name);
+                return;
+            };  
+            let Ok((_, end_map_tile)) = hexes.get(end_hex_entity) else {
+                info!("Map tile entity for {} missing", end_hex_name);
+                return;
+            };      
+            let end_coord = end_map_tile.coord.clone();
+
+            if let Some(path) = find_path( game_state, &mut hexes,
+                            &start_coord, &end_coord)
+            {
+                info!("path from {} to {} is {:?}",
+                            start_hex_name, end_hex_name,
+                            path);
+            }
+            end_city += 1;
+        }
+        start_city += 1;
+    }
+ 
+    info!("run_trains complete.");
 }
 
 /// System to perform some simple routefinding tests on the empty

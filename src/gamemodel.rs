@@ -11,6 +11,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use hexx::Hex;
 
 use crate::routemap::MapTile;
+use crate::routemap::City;
 use crate::routemap::HexName;
 use crate::routemap::TileInventoryQuantity;
 use crate::routemap::TilePlacementData;
@@ -303,13 +304,15 @@ pub struct OperatingState {
     pub operating_revenue: u32, // how much revenue the RR produced this turn
 }
 
-// Tracks state during the laying of a new track tile
+// Tracks state during the laying of a new track tile. See MapTile
+// for description of hex_name vs tile_name.
 
 pub struct TrackState {
     pub constructing_track: bool,
     pub hex_chosen: bool,
     pub hex_name: String,
     pub hex_coord: Option<Hex>,
+    pub tile_name: String,
     pub tile_chosen: u32,
     pub tile_choices: Vec<u32>,
     pub tile_rotation: usize,
@@ -500,6 +503,18 @@ impl Train
             Train::Diesel => 1100,
         }
     }
+    pub fn remove_from_bank(&self, game_state: &mut GameState)
+    {
+        match self
+        {
+            Train::Two =>    { game_state.trains_left[0] -= 1; },
+            Train::Three =>  { game_state.trains_left[1] -= 1; },
+            Train::Four =>   { game_state.trains_left[2] -= 1; },
+            Train::Five =>   { game_state.trains_left[3] -= 1; },
+            Train::Six =>    { game_state.trains_left[4] -= 1; },
+            Train::Diesel => { game_state.trains_left[5] -= 1; },
+        }
+    }
 }
 
 // CurrentPCAuction holds the state for resolving an auction for
@@ -563,6 +578,7 @@ pub struct GameState {
 
     pub operating_state: OperatingState,
     pub track_state: TrackState,
+    pub cities: HashMap<String, City>,
 
     // tile_by_coord and tile_by_name provide search indices to the MapTile
     // entities.  Each `MapTile` lives in its own entity spawned by
@@ -617,9 +633,12 @@ impl GameState {
                 hex_name: String::new(),
                 hex_coord: None,
                 tile_chosen: 0,
+                tile_name: String::new(),
                 tile_rotation: 0,
                 tile_choices: Vec::new(),
             },
+
+            cities: HashMap::new(),
 
             private_company_states: [0;6],
             auction_bids: Vec::new(),
@@ -859,6 +878,7 @@ impl GameState {
         self.track_state.hex_name = String::new();
         self.track_state.hex_coord = None;
         self.track_state.tile_chosen = 0;
+        self.track_state.tile_name = String::new();
         self.track_state.tile_rotation = 0;
         self.track_state.tile_choices = Vec::new();
     }
@@ -1035,12 +1055,15 @@ pub fn place_tile_impl(
 ) {
     if ! game_state.track_state.hex_chosen
     {
+        info!("You asked to place a tile, but no hex was chosen");
         return;
     }
 
-    info!("You asked to place tile {} on hex {} with rotation {}",
+    info!("You asked to place tile {} on hex {:?} {} {} with rotation {}",
             game_state.track_state.tile_chosen,
+            game_state.track_state.hex_coord,
             game_state.track_state.hex_name,
+            game_state.track_state.tile_name,
             game_state.track_state.tile_rotation);
 
     // Always consume the request, whether or not it turns out to be valid.
@@ -1581,7 +1604,7 @@ pub fn build_right_side_operating_ui(
     if game_state.operating_state.action_performed ==
                                         RailroadOperation::PlaceStation
     {
-        run_trains(game_state);
+        run_trains(game_state, hexes);
         game_state.operating_state.action_performed =
                                         RailroadOperation::RunTrains;
         return;
@@ -1667,13 +1690,30 @@ pub fn next_available_train(game_state: &mut GameState) -> Train
     return Train::Diesel;
 }
 
-pub fn buy_train(game_state: &mut GameState, train: Train)
-{
     // Railroad spends money
     // Railroad assets updated to show it owns train
     // One less train remaining in the bank
 
-    info!("buy_train not implemented");
+pub fn buy_train(game_state: &mut GameState, train: Train)
+{
+    let Some(current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {
+        return;
+    };
+
+    let rr_idx = current_railroad.rr_idx;
+    let railroad = &mut game_state.railroads[rr_idx];
+    let rr_name = railroad.name.clone();
+
+    railroad.assets.corporation_money -= train.cost();
+    game_state.bank += train.cost();
+
+    railroad.assets.trains.push(train);
+
+    train.remove_from_bank(game_state);
+
+    info!("{} bought {:?} for {}", rr_name, train, train.cost());
 }
 
 // When this railroad finishes its operating turn, advance to the next
