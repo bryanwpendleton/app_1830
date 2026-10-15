@@ -10,6 +10,7 @@ use hexx::algorithms::a_star;
 use crate::stockmarket::GridBox;
 use crate::gamemodel::GameState;
 use crate::gamemodel::place_tile_impl;
+use crate::gamemodel::Train;
 
 /*
     The routemap supports the Operating Round(s) of 1830.
@@ -1835,6 +1836,162 @@ pub fn spawn_tile_placement_data(
                     TileHasCrossover,
         )).id() );
 }
+
+//
+// Some terminology that is useful in this section of the code:
+//
+// - A "path" is a continuous segment of track that connects two
+//   map hexes. The most common use of paths is for building "routes"
+//   but sometimes we have other paths, for example when deciding
+//   if a possible new tile connects to a railroad's station marker.
+//
+//   There is not necessarily a path between any two arbitrary
+//   hexes on the map. We use find_path() to search the map and
+//   return a path if there is one, otherwise it returns None.
+//
+// - A "route" is a path which satisfies a number of additional
+//   rules and constraints. A route is a path which a particular
+//   railroad can use for running a train and collecting revenue.
+//
+//   The number of cities on a route includes all of the cities that
+//   the route runs through or to. A route may not skip a city that
+//   it runs through.
+//
+//   There may be multiple paths between two hexes. The a_star
+//   algorithm returns the shortest path, but if we are trying
+//   to form a route, we may need to tell the a_star algorithm
+//   about some of the rules and constraints so that it returns
+//   a longer (in hexes) path which is better for making a route.
+//
+//   Specifically, a path which includes a higher number of cities
+//   will produce greater revenue, if the railroad has a train
+//   with that greater range (a 4-city path is useless if a railroad
+//   only has range-2 and range-3 trains).
+//
+//   Also, a particular path may be blocked by another
+//   railroad's station marker but a longer path may be available.
+//
+
+pub struct Route
+{
+    pub path: Vec<Hex>, // the path this route takes
+    pub num_cities: u32, // the length of this route in cities.
+    pub revenue: u32, // the sum of all the revenues of its cities
+}
+
+pub fn form_route(
+    game_state: & GameState,
+    hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
+    path: Vec<Hex>, 
+) -> Option<Route>
+{
+    return None; // stub.
+
+    // Check that the path includes at least one city containing
+    // one of the railroad’s stations. If so, compute the num_cities
+    // and revenue of the path and return a Route.
+
+    let mut num_cities : u32 = 0;
+    let mut revenue : u32 = 0;
+
+    for hex in path
+    {
+        let hex_entity = *game_state.tile_by_coord.get(&hex)?;
+
+        let Ok((_sprite, map_tile)) = hexes.get(hex_entity) else {
+            info!("Map tile entity for {:?} missing", hex);
+            return None;
+        }; 
+
+        if let Some(city) = game_state.cities.get(&map_tile.hex_name.name) {
+            num_cities += 1;
+            revenue += city.value; // FIXME value_phase_five
+
+            // FIXME station markers
+        }
+    }
+
+    return Some(Route {
+                path: path,
+                num_cities: num_cities,
+                revenue: revenue,
+    });
+}
+
+enum RouteAssignment
+{
+    // Assigned means that the highest valued Route was successfully
+    // given to the shortest-range train that could use it.
+    //
+    Assigned { revenue: u32, train: Train },
+
+    // No MoreTrains means that the railroad has used all of its
+    // trains, and so it can't take advantage of any of the
+    // remaining routes.
+    //
+    NoMoreTrains,
+
+    // NoUsableTrain means that the highest valued Route was skipped
+    // because the railroad didn't have a locomotive powerful enough
+    // to use it.
+    //
+    NoUsableTrain { route_length: u32 },
+}
+
+fn smallest_train_of_at_least(trains: & mut Vec<Train>, range: u32)
+            -> Option<Train>
+{
+    let mut t_idx : usize = 0;
+    let mut found : bool = false;
+    while t_idx < trains.len()
+    {
+        if trains[t_idx].range() >= range
+        {
+            found = true;
+            break;
+        }
+        t_idx += 1;
+    }
+    if found
+    {
+        let train = trains.remove(t_idx);
+        return Some(train);
+    }
+    return None;
+}
+
+// Look at the first route in the routes vector and remove it from
+// the vector. If the railroad has a train that can run that route,
+// find the smallest of the railroad's trains that can be used,
+// remove that train from the trains vector, and return which train
+// was used and what revenue was earned. If the railroad can't run
+// that route, return the reason why. The caller can then decide
+// whether to continue trying with the next route in the vector or not.
+//
+fn assign_route_to_best_train(routes: &mut Vec<Route>,
+                                    trains: & mut Vec<Train>,
+        ) -> RouteAssignment
+{
+    let route = routes.remove(0);
+
+    if trains.len() == 0
+    {
+        return RouteAssignment::NoMoreTrains;
+    }
+
+    if let Some(train) = smallest_train_of_at_least(trains, route.num_cities)
+    {
+        // RR has a train that can run this route
+        return RouteAssignment::Assigned {
+            revenue: route.revenue,
+            train: train,
+        }
+    }
+    return RouteAssignment::NoUsableTrain {
+            route_length: route.num_cities,
+    };
+}
+
 pub fn find_path(
     game_state: & GameState,
     hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
@@ -1904,6 +2061,11 @@ pub fn run_trains(game_state: & mut GameState,
     // - pick the combination of routes which gives the highest revenue.
     //
 
+    let mut routes : Vec<Route> = Vec::new();
+    let mut trains : Vec<Train> = railroad.assets.trains.clone();
+
+    trains.sort_by(|a, b| { a.range().cmp(&b.range()) });
+
     let num_cities : usize = game_state.cities.len();
     let city_hexes: Vec<&String> = game_state.cities.keys().collect();
 
@@ -1944,13 +2106,65 @@ pub fn run_trains(game_state: & mut GameState,
                 info!("path from {} to {} is {:?}",
                             start_hex_name, end_hex_name,
                             path);
+
+                if let Some(route) = form_route( game_state, &mut hexes, path)
+                {
+                    routes.push(route);
+                }
             }
             end_city += 1;
         }
         start_city += 1;
     }
+
+    info!("Found {} routes", routes.len());
  
-    info!("run_trains complete.");
+    if routes.len() == 0
+    {
+        game_state.operating_state.operating_revenue = 0;
+        info!("This railroad has no routes, so it produces no revenue");
+        return;
+    }
+    // Sort the routes in descending order by revenue
+    routes.sort_unstable_by_key(|r| std::cmp::Reverse(r.revenue));
+
+    // Choose the highest-valued routes, until we run out of trains or routes
+    let mut route_selection_complete: bool = false;
+    while routes.len() > 0
+    {
+        if route_selection_complete
+        {
+            break;
+        }
+        let result = assign_route_to_best_train(& mut routes, &mut trains);
+
+        match result
+        {
+            RouteAssignment::Assigned { revenue, train } => {
+                game_state.operating_state.operating_revenue += revenue;
+                info!("Successfully used route of revenue {} with train {:?}",
+                        revenue, train);
+            },
+            RouteAssignment::NoMoreTrains => {
+                info!("All trains have been used for routes");
+                route_selection_complete = true;
+            },
+            RouteAssignment::NoUsableTrain { route_length } => {
+                info!("No train available for route of length {}",
+                        route_length);
+            },
+        }
+    }
+
+    if route_selection_complete
+    {
+        info!("run_trains complete, successfully used all trains, revenue {}",
+                game_state.operating_state.operating_revenue);
+    }
+    else
+    {
+        info!("run_trains complete, some trains could not be used");
+    }
 }
 
 /// System to perform some simple routefinding tests on the empty
