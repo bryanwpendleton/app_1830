@@ -1885,8 +1885,6 @@ pub fn form_route(
     path: Vec<Hex>, 
 ) -> Option<Route>
 {
-    return None; // stub.
-
     // Check that the path includes at least one city containing
     // one of the railroad’s stations. If so, compute the num_cities
     // and revenue of the path and return a Route.
@@ -1894,7 +1892,7 @@ pub fn form_route(
     let mut num_cities : u32 = 0;
     let mut revenue : u32 = 0;
 
-    for hex in path
+    for hex in &path
     {
         let hex_entity = *game_state.tile_by_coord.get(&hex)?;
 
