@@ -11,6 +11,7 @@ use crate::stockmarket::GridBox;
 use crate::gamemodel::GameState;
 use crate::gamemodel::place_tile_impl;
 use crate::gamemodel::Train;
+use crate::gamemodel::Station;
 
 /*
     The routemap supports the Operating Round(s) of 1830.
@@ -39,7 +40,7 @@ pub struct HexName {
 ///
 /// Each MapTile component wraps a single hexx::hex instance with some
 /// additional metadata such as which track tile (if any) has been
-/// currently placed here and whether there is a station marker present.
+/// currently placed here and whether there is a station token present.
 ///
 #[derive(Component)]
 pub struct MapTile {
@@ -54,9 +55,21 @@ pub struct MapTile {
 
     pub hex_name: HexName,
     pub tile_name: String,
-    /// The `tile_number` of the [`Tile`] currently laid on this hex, or
-    /// `0` when no track tile is placed here (`0` is not a valid tile number).
+
+    // placed_tile contains The tile_number of the Tile currently
+    // laid on this hex, or 0 when no track tile is placed here
+    // (0 is not a valid tile number).
+    //
+    // For most hexes, there is no cost to place a tile. But if a hex
+    // contains mountains and the notation “$120,” a railroad placing
+    // a tile on that hex must pay $120 to the bank. If a hex contains
+    // water and the notation “$80,” a railroad placing a tile on that
+    // hex must pay $80 to the bank. terrain_cost contains this cost, or 0.
+    //
+
     pub placed_tile: u32,
+    pub terrain_cost: u32,
+
     pub market: HashMap<String, GridBox>,
 
     pub track: [usize;6],
@@ -937,205 +950,209 @@ pub fn spawn_routemap(
     //
     // We're using F12 as the logical center of the screen,
     // everything from there.
+    //
+    // These tuples are:
+    // (hex_name, coord, tile_name, hcolor, tpattern, tile_list, cost)
 
     let hexes = vec![
         (HexName::new("A9"),  Hex::new( 1, -5),  "A9", 
-            HexColor::Red, [0,0,1,0,0,0], Vec::new()),
+            HexColor::Red, [0,0,1,0,0,0], Vec::new(), 0),
         (HexName::new("A11"), Hex::new( 2, -5), "A11", 
-            HexColor::Red, [0,0,1,1,0,0], Vec::new()),
+            HexColor::Red, [0,0,1,1,0,0], Vec::new(), 0),
         (HexName::new("A17"), Hex::new( 5, -5), "A17", 
-            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new(), 0),
         (HexName::new("A19"), Hex::new( 6, -5), "A19", 
-            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new(), 0),
 
         (HexName::new("B10"), Hex::new( 1, -4), "blank_1large", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("B12"), Hex::new( 2, -4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("B14"), Hex::new( 3, -4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("B16"), Hex::new( 4, -4), "blank_1large", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("B18"), Hex::new( 5, -4), "B18", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 80),
         (HexName::new("B20"), Hex::new( 6, -4), "B20", 
-            HexColor::Tan, [0;6], vec![3,4,58]),
+            HexColor::Tan, [0;6], vec![3,4,58], 0),
         (HexName::new("B22"), Hex::new( 7, -4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("B24"), Hex::new( 8, -4), "B24", 
-            HexColor::Red, [0,0,0,1,1,0], Vec::new()),
+            HexColor::Red, [0,0,0,1,1,0], Vec::new(), 0),
 
         (HexName::new("C7"),  Hex::new(-1, -3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("C9"),  Hex::new( 0, -3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("C11"), Hex::new( 1, -3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("C13"), Hex::new( 2, -3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("C15"), Hex::new( 3, -3), "C15", 
-            HexColor::Gray, [1,0,0,0,1,0], Vec::new()),
+            HexColor::Gray, [1,0,0,0,1,0], Vec::new(), 0),
         (HexName::new("C17"), Hex::new( 4, -3), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("C19"), Hex::new( 5, -3), "C19", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 80),
         (HexName::new("C21"), Hex::new( 6, -3), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("C23"), Hex::new( 7, -3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
 
         (HexName::new("D2"),  Hex::new(-4, -2), "D2", 
-            HexColor::Gray, [0,1,1,0,0,0], Vec::new()),
+            HexColor::Gray, [0,1,1,0,0,0], Vec::new(), 0),
         (HexName::new("D4"),  Hex::new(-3, -2), "blank_1small", 
-            HexColor::Tan, [0;6], vec![3,4,58]),
+            HexColor::Tan, [0;6], vec![3,4,58], 0),
         (HexName::new("D6"),  Hex::new(-2, -2), "D6", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 80),
         (HexName::new("D8"),  Hex::new(-1, -2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("D10"), Hex::new( 0, -2), "D10", 
-            HexColor::Yellow, [0;6], vec![59]),
+            HexColor::Yellow, [0;6], vec![59], 80),
         (HexName::new("D12"), Hex::new( 1, -2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("D14"), Hex::new( 2, -2), "D14", 
-            HexColor::Gray, [0,1,0,1,1,0], Vec::new()),
+            HexColor::Gray, [0,1,0,1,1,0], Vec::new(), 0),
         (HexName::new("D16"), Hex::new( 3, -2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("D18"), Hex::new( 4, -2), "D18", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("D20"), Hex::new( 5, -2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("D22"), Hex::new( 6, -2), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("D24"), Hex::new( 7, -2), "D24", 
-            HexColor::Gray, [0,0,0,1,1,0], Vec::new()),
+            HexColor::Gray, [0,0,0,1,1,0], Vec::new(), 0),
 
         (HexName::new("E3"),  Hex::new(-4, -1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("E5"),  Hex::new(-3, -1), "E5", 
-            HexColor::Yellow, [0;6], vec![59]),
+            HexColor::Yellow, [0;6], vec![59], 80),
         (HexName::new("E7"),  Hex::new(-2, -1), "blank_1small", 
-            HexColor::Tan, [0;6], vec![3,4,58]),
+            HexColor::Tan, [0;6], vec![3,4,58], 0),
         (HexName::new("E9"),  Hex::new(-1, -1), "E9", 
-            HexColor::Gray, [1,0,0,0,0,1], Vec::new()),
+            HexColor::Gray, [1,0,0,0,0,1], Vec::new(), 0),
         (HexName::new("E11"), Hex::new( 0, -1), "E11", 
-            HexColor::Yellow, [0;6], vec![59]),
+            HexColor::Yellow, [0;6], vec![59], 0),
         (HexName::new("E13"), Hex::new( 1, -1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("E15"), Hex::new( 2, -1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("E17"), Hex::new( 3, -1), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("E19"), Hex::new( 4, -1), "E19", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("E21"), Hex::new( 5, -1), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("E23"), Hex::new( 6, -1), "E23", 
-            HexColor::Yellow, [1,0,1,0,0,0], vec![53]),
+            HexColor::Yellow, [1,0,1,0,0,0], vec![53], 0),
 
         (HexName::new("F2"),  Hex::new(-5,  0), "F2", 
-            HexColor::Red, [1,1,1,0,0,0], Vec::new()),
+            HexColor::Red, [1,1,1,0,0,0], Vec::new(), 0),
         (HexName::new("F4"),  Hex::new(-4,  0), "F4", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 80),
         (HexName::new("F6"),  Hex::new(-3,  0), "F6", 
-            HexColor::Gray, [0,0,1,1,0,0], Vec::new()),
+            HexColor::Gray, [0,0,1,1,0,0], Vec::new(), 0),
         (HexName::new("F8"),  Hex::new(-2,  0), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("F10"), Hex::new(-1,  0), "blank_1small", 
-            HexColor::Tan, [0;6], vec![3,4,58]),
+            HexColor::Tan, [0;6], vec![3,4,58], 0),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F12"), Hex::new( 0,  0), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
                 // F12 -- CENTER OF THE SCREEN
         (HexName::new("F14"), Hex::new( 1,  0), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("F16"), Hex::new( 2,  0), "F16", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 120),
         (HexName::new("F18"), Hex::new( 3,  0), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("F20"), Hex::new( 4,  0), "blank_2small", 
-            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69], 0),
         (HexName::new("F22"), Hex::new( 5,  0), "F22", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 80),
         (HexName::new("F24"), Hex::new( 6,  0), "F24", 
-            HexColor::Gray, [0,0,0,0,1,1], Vec::new()),
+            HexColor::Gray, [0,0,0,0,1,1], Vec::new(), 0),
 
         (HexName::new("G3"),  Hex::new(-5,  1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("G5"),  Hex::new(-4,  1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("G7"),  Hex::new(-3,  1), "blank_2small", 
-            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69], 0),
         (HexName::new("G9"),  Hex::new(-2,  1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("G11"), Hex::new(-1,  1), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("G13"), Hex::new( 0,  1), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("G15"), Hex::new( 1,  1), "G15", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("G17"), Hex::new( 2,  1), "blank_2small", 
-            HexColor::Tan, [0;6], vec![1,2,55,56,69]),
+            HexColor::Tan, [0;6], vec![1,2,55,56,69], 0),
         (HexName::new("G19"), Hex::new( 3,  1), "G19", 
-            HexColor::Yellow, [1,0,0,1,0,0], vec![54]),
+            HexColor::Yellow, [1,0,0,1,0,0], vec![54], 80),
 
         (HexName::new("H2"),  Hex::new(-6,  2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("H4"),  Hex::new(-5,  2), "blank_1large", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("H6"),  Hex::new(-4,  2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("H8"),  Hex::new(-3,  2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("H10"), Hex::new(-2,  2), "blank_1large", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("H12"), Hex::new(-1,  2), "H12", 
-            HexColor::Gray, [0,1,0,0,1,0], Vec::new()),
+            HexColor::Gray, [0,1,0,0,1,0], Vec::new(), 0),
         (HexName::new("H14"), Hex::new( 0,  2), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("H16"), Hex::new( 1,  2), "blank_1large", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 0),
         (HexName::new("H18"), Hex::new( 2,  2), "H18", 
-            HexColor::Yellow, [0;6], vec![59]),
+            HexColor::Yellow, [0;6], vec![59], 0),
+
         (HexName::new("I1"),  Hex::new(-7,  3), "blank", 
-            HexColor::Red, [0,1,0,0,0,0], Vec::new()),
+            HexColor::Red, [0,1,0,0,0,0], Vec::new(), 0),
         (HexName::new("I3"),  Hex::new(-6,  3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("I5"),  Hex::new(-5,  3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("I7"),  Hex::new(-4,  3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("I9"),  Hex::new(-3,  3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("I11"), Hex::new(-2,  3), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("I13"), Hex::new(-1,  3), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("I15"), Hex::new( 0,  3), "I15", 
-            HexColor::Yellow, [0,1,0,1,0,0], vec![53]),
+            HexColor::Yellow, [0,1,0,1,0,0], vec![53], 0),
         (HexName::new("I17"), Hex::new( 1,  3), "I17", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 80),
         (HexName::new("I19"), Hex::new( 2,  3), "I19", 
-            HexColor::Gray, [0,0,0,0,1,1], Vec::new()),
+            HexColor::Gray, [0,0,0,0,1,1], Vec::new(), 0),
 
         (HexName::new("J2"),  Hex::new(-7,  4), "J2", 
-            HexColor::Red, [1,1,0,0,0,0], Vec::new()),
+            HexColor::Red, [1,1,0,0,0,0], Vec::new(), 0),
         (HexName::new("J4"),  Hex::new(-6,  4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("J6"),  Hex::new(-5,  4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("J8"),  Hex::new(-4,  4), "blank", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 0),
         (HexName::new("J10"), Hex::new(-3,  4), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("J12"), Hex::new(-2,  4), "blank_mountain", 
-            HexColor::Tan, [0;6], vec![7,8,9]),
+            HexColor::Tan, [0;6], vec![7,8,9], 120),
         (HexName::new("J14"), Hex::new(-1,  4), "J14", 
-            HexColor::Tan, [0;6], vec![57]),
+            HexColor::Tan, [0;6], vec![57], 80),
 
         (HexName::new("K13"), Hex::new(-2,  5), "K13", 
-            HexColor::Red, [1,0,0,0,0,1], Vec::new()),
+            HexColor::Red, [1,0,0,0,0,1], Vec::new(), 0),
         (HexName::new("K15"), Hex::new(-1,  5), "K15", 
-            HexColor::Gray, [0,0,0,0,0,1], Vec::new()),
+            HexColor::Gray, [0,0,0,0,0,1], Vec::new(), 0),
     ];
 
     // For each hex in our game map, a MapTile component holds
@@ -1147,7 +1164,7 @@ pub fn spawn_routemap(
     // a hex -- by coordinate or by name -- to its entity,
     // then read/mutate the `MapTile` through a query.
 
-    for (hex_name, coord, tile_name, hcolor, tpattern, tile_list) in hexes
+    for (hex_name, coord, tile_name, hcolor, tpattern, tile_list, cost) in hexes
     {
         let world_pos = settings.hex_to_world_pos(coord);
 
@@ -1162,6 +1179,7 @@ pub fn spawn_routemap(
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
                 placed_tile: 0, // 0 = no track tile placed yet
+                terrain_cost: cost,
                 track: tpattern,
                 tile_choices: tile_list,
             },
@@ -1347,12 +1365,12 @@ pub fn handle_tile_clicks(
     Note that this computation is also where we ensure legal tile
     upgrades as they must maintain existing connectivity.
    
-    Some of the connectivity is dynamic, for example a station marker
+    Some of the connectivity is dynamic, for example a station token
     may restrict a route to only the railroad that placed that marker.
    
     Some route restrictions may only be evaluated after the
     potential route has been computed, for example the route must
-    contain at least one of the railroad's own station markers.
+    contain at least one of the railroad's own station token.
    
     Some route restrictions may only be evaluated after a complete
     set of candidate routes has been computed, e.g. when a
@@ -1843,14 +1861,14 @@ pub fn spawn_tile_placement_data(
 // - A "path" is a continuous segment of track that connects two
 //   map hexes. The most common use of paths is for building "routes"
 //   but sometimes we have other paths, for example when deciding
-//   if a possible new tile connects to a railroad's station marker.
+//   if a possible new tile connects to a railroad's station token.
 //
 //   There is not necessarily a path between any two arbitrary
 //   hexes on the map. We use find_path() to search the map and
 //   return a path if there is one, otherwise it returns None.
 //
 // - A "route" is a path which satisfies a number of additional
-//   rules and constraints. A route is a path which a particular
+//   rules and constraints. A route is thus a path which a particular
 //   railroad can use for running a train and collecting revenue.
 //
 //   The number of cities on a route includes all of the cities that
@@ -1869,7 +1887,7 @@ pub fn spawn_tile_placement_data(
 //   only has range-2 and range-3 trains).
 //
 //   Also, a particular path may be blocked by another
-//   railroad's station marker but a longer path may be available.
+//   railroad's station token but a longer path may be available.
 //
 
 pub struct Route
@@ -1879,18 +1897,31 @@ pub struct Route
     pub revenue: u32, // the sum of all the revenues of its cities
 }
 
+// form_route: is this path a valid Route?
+//
+// Check that the path includes at least one city containing
+// one of the railroad’s stations. If so, compute the num_cities
+// and revenue of the path and return a Route.
+
 pub fn form_route(
     game_state: & GameState,
     hexes: &mut Query<(&mut Sprite, &mut MapTile)>,
     path: Vec<Hex>, 
 ) -> Option<Route>
 {
-    // Check that the path includes at least one city containing
-    // one of the railroad’s stations. If so, compute the num_cities
-    // and revenue of the path and return a Route.
+    let Some(mut current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {      
+        info!("No current railroad, this cannot be a Route");
+        return None; 
+    };      
+            
+    let rr_idx = current_railroad.rr_idx;
+    let railroad = &game_state.railroads[rr_idx];
 
     let mut num_cities : u32 = 0;
     let mut revenue : u32 = 0;
+    let mut includes_station = false;
 
     for hex in &path
     {
@@ -1905,8 +1936,21 @@ pub fn form_route(
             num_cities += 1;
             revenue += city.value; // FIXME value_phase_five
 
-            // FIXME station markers
+            // Does the railroad have a station in this city?
+            for s in &railroad.assets.stations
+            {
+                if s.location == map_tile.hex_name.name
+                {
+                    includes_station = true;
+                }
+            }
         }
+    }
+
+    if ! includes_station
+    {
+        // info!("Not a route; does not include any station of this railroad");
+        return None;
     }
 
     return Some(Route {
@@ -2063,6 +2107,7 @@ pub fn run_trains(game_state: & mut GameState,
     let mut trains : Vec<Train> = railroad.assets.trains.clone();
 
     trains.sort_by(|a, b| { a.range().cmp(&b.range()) });
+    info!("This railroad has {} trains {:?}", trains.len(), trains);
 
     let num_cities : usize = game_state.cities.len();
     let city_hexes: Vec<&String> = game_state.cities.keys().collect();
@@ -2154,7 +2199,7 @@ pub fn run_trains(game_state: & mut GameState,
         }
     }
 
-    if route_selection_complete
+    if route_selection_complete || trains.len() == 0
     {
         info!("run_trains complete, successfully used all trains, revenue {}",
                 game_state.operating_state.operating_revenue);

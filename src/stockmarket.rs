@@ -10,6 +10,7 @@ use crate::gamemodel::Player;
 use crate::gamemodel::RailroadCorporation;
 use crate::gamemodel::RoundState;
 use crate::gamemodel::NUM_RAILROADS;
+use crate::gamemodel::Station;
 
 /// The stock market records and governs the value of the railroad
 /// corporations’ shares. This stock market is represented by a
@@ -169,14 +170,26 @@ pub fn check_if_floated(commands: & Commands, game_state: & mut GameState,
     if railroad.certificates_remaining <= 4
     {
         info!("{} is now floated", railroad.name);
-        railroad.assets.stations = railroad.num_stations;
+
+        // Rules say:
+        //   At the beginning of a railroad’s first turn of operation,
+        //   it must place a token in its starting city circle to create
+        //   its home station.  There is no cost to perform this action.
+        // Does it matter that we are doing it at time of flotation rather
+        // than at beginning of first operation turn?
+
+        railroad.assets.stations_remaining = railroad.num_stations - 1;
+        railroad.assets.stations.push(Station {
+                        location: railroad.starting_hex.clone(),
+        } );
         railroad.assets.corporation_money = 10 * railroad.par_value;
         railroad.floated = true;
         place_share_value_token(game_state, rr_idx);
         return;
     }
-    info!("{} has {} certificates remaining, not floated yet",
-            railroad.name, railroad.certificates_remaining);
+
+    // info!("{} has {} certificates remaining, not floated yet",
+    //         railroad.name, railroad.certificates_remaining);
 }
 
 // Place a station marker for game_state.operating_state.cur_rr on
@@ -373,7 +386,9 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             let railroad = & mut game_state.railroads[rr_idx];
             railroad.certificates_remaining -= 1;
 
-            let price = game_state.current_par_value as u32;
+            // let price = game_state.current_par_value as u32;
+            let price = railroad.par_value as u32;
+
             current_player.assets.personal_money -= price;
             game_state.bank += price;
             current_player.assets.corporations[rr_idx] += 1;

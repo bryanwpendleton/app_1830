@@ -341,7 +341,8 @@ pub enum Railroad {
 // - trains
 pub struct RailroadAssets
 {
-    pub stations: u32, // number of not-yet-placed station markers
+    pub stations_remaining: u32, // number of not-yet-placed station markers
+    pub stations: Vec<Station>,  // stations already placed.
     pub corporation_money: u32,
     pub trains: Vec<Train>,
     pub share_value_token: ShareValueToken,
@@ -461,6 +462,22 @@ impl PrivateCompany
         }
     }
 
+}
+
+// Station Tokens, or typically just Stations, are Railroad assets
+// which have two effects:
+//
+// - Stations allow a city to be a base for its railroad’s routes
+// - Stations can block other railroads’ routes
+//
+// Each railroad has a limited number of possible stations, some
+// have more, some have less. When a railroad places one of its
+// tokens on a large city circle, that token becomes a station
+// for that railroad.
+//
+pub struct Station
+{
+    pub location: String, // Hex where the station is placed, e.g. "F6"
 }
 
 // Trains have a type. The type of the train also determines:
@@ -662,7 +679,8 @@ impl GameState {
                     starting_hex: "H12".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -682,7 +700,8 @@ impl GameState {
                     starting_hex: "E19".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -702,7 +721,8 @@ impl GameState {
                     starting_hex: "A19".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -722,7 +742,8 @@ impl GameState {
                     starting_hex: "I15".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -742,7 +763,8 @@ impl GameState {
                     starting_hex: "F6".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -762,7 +784,8 @@ impl GameState {
                     starting_hex: "E11".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -782,7 +805,8 @@ impl GameState {
                     starting_hex: "G19".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -802,7 +826,8 @@ impl GameState {
                     starting_hex: "E23".to_string(),
                     floated: false,
                     assets: RailroadAssets {
-                        stations: 0,
+                        stations_remaining: 0,
+                        stations: Vec::new(),
                         corporation_money: 0,
                         trains: Vec::new(),
                         share_value_token: ShareValueToken
@@ -1059,6 +1084,17 @@ pub fn place_tile_impl(
         return;
     }
 
+    // Which railroad is doing this tile placement?
+    let Some(mut current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {      
+        info!("No current railroad, we cannot place a tile");
+        return; 
+    };      
+            
+    let rr_idx = current_railroad.rr_idx;
+    let mut railroad = &mut game_state.railroads[rr_idx];
+
     info!("You asked to place tile {} on hex {:?} {} {} with rotation {}",
             game_state.track_state.tile_chosen,
             game_state.track_state.hex_coord,
@@ -1124,6 +1160,22 @@ pub fn place_tile_impl(
         }
     }
 
+    // If this is the first tile to be placed on this hex, there may
+    // be a cost to pay. Can the railroad pay this cost?
+
+    if old_number == 0
+    {
+        if map_tile.terrain_cost > 0
+        {
+            if railroad.assets.corporation_money < map_tile.terrain_cost
+            {
+                info!("RR has only {}, terrain cost is {}",
+                    railroad.assets.corporation_money, map_tile.terrain_cost);
+                return;
+            }
+        }
+    }
+
 // FIXME -- there are other placement rules to enforce
 
     // Rule 3: take the new tile from inventory and place it.
@@ -1131,6 +1183,15 @@ pub fn place_tile_impl(
         new_q.quantity -= 1;
         info!("Took tile {} from inventory ({} remaining)",
             new_number, new_q.quantity);
+    }
+
+    if old_number == 0
+    {
+        if map_tile.terrain_cost > 0
+        {
+            railroad.assets.corporation_money -= map_tile.terrain_cost;
+            game_state.bank += map_tile.terrain_cost;
+        }
     }
 
     // placement data with track pattern and other placement details:
@@ -1170,6 +1231,12 @@ pub fn game_state_panel_right(
     asset_server: Res<AssetServer>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
+
+/*
+    ctx.style_mut(|style| {
+        style.override_font_id = Some(egui::FontId::proportional(16.0));
+    });
+*/
 
     // Panels render into a Ui built over the viewport background layer.
     let mut viewport_ui = egui::Ui::new(
@@ -1423,9 +1490,12 @@ pub fn build_right_side_stock_ui(
         }
         if purchase_options.canBuyCert()
         {
+/*
             game_state.current_par_value =
                         ParValue::fromInteger(railroad.par_value as usize);
             let price = game_state.current_par_value as u32;
+*/
+            let price = railroad.par_value as u32;
 
             if ui.button(format!("Buy {:?} cert for {}",
                         short_name, price)).clicked()
@@ -1741,6 +1811,12 @@ pub fn game_state_panel_left(
     mut game_state: ResMut<GameState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
+
+/*
+    ctx.style_mut(|style| {
+        style.override_font_id = Some(egui::FontId::proportional(16.0));
+    });
+*/
 
     // Panels render into a Ui built over the viewport background layer.
     let mut viewport_ui = egui::Ui::new(
