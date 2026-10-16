@@ -1200,6 +1200,7 @@ pub fn place_tile_impl(
         map_tile.track = tile_data.1.rotate_tile_track(rotation);
 
         map_tile.placed_tile = new_number;
+        map_tile.placed_rotation = rotation;
 
         let image_path = format!("{}/T{}_{}.png",
             tile_data.0.color.name(),

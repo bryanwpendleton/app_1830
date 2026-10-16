@@ -9,6 +9,7 @@ use hexx::algorithms::a_star;
 
 use crate::stockmarket::GridBox;
 use crate::gamemodel::GameState;
+use crate::gamemodel::GamePhase;
 use crate::gamemodel::place_tile_impl;
 use crate::gamemodel::Train;
 use crate::gamemodel::Station;
@@ -58,16 +59,18 @@ pub struct MapTile {
 
     // placed_tile contains The tile_number of the Tile currently
     // laid on this hex, or 0 when no track tile is placed here
-    // (0 is not a valid tile number).
-    //
+    // (0 is not a valid tile number). placed_rotation similarly
+    // records what rotation was used.
+
+    pub placed_tile: u32,
+    pub placed_rotation: usize,
+
     // For most hexes, there is no cost to place a tile. But if a hex
     // contains mountains and the notation “$120,” a railroad placing
     // a tile on that hex must pay $120 to the bank. If a hex contains
     // water and the notation “$80,” a railroad placing a tile on that
     // hex must pay $80 to the bank. terrain_cost contains this cost, or 0.
-    //
 
-    pub placed_tile: u32,
     pub terrain_cost: u32,
 
     pub market: HashMap<String, GridBox>,
@@ -90,7 +93,7 @@ pub struct MapTile {
 ///    track. You may only place green tiles on yellow hexes
 /// -  Tan hexes can contain cities and/or track. You may only
 ///    place yellow tiles on tan hexes. ("clear" on original map)
-#[derive(Component)]
+#[derive(Component, Eq, PartialEq)]
 pub enum HexColor {
     Gray,
     Red,
@@ -189,7 +192,7 @@ pub struct TileTrack {
     pub track: [usize;6],
 }
 
-#[derive(Component)]
+#[derive(Component, Eq, PartialEq)]
 pub enum TileColor {
     Yellow,
     Green,
@@ -1179,6 +1182,7 @@ pub fn spawn_routemap(
                 market: HashMap::new(),
                 tile_name: tile_name.to_string(),
                 placed_tile: 0, // 0 = no track tile placed yet
+                placed_rotation: 0, // 0 = no track tile placed yet
                 terrain_cost: cost,
                 track: tpattern,
                 tile_choices: tile_list,
@@ -1211,6 +1215,13 @@ pub fn set_tile_choices_for_hex( game_state: &mut GameState,
     {
         // no tile has yet been placed on this hex
 
+        if map_tile.hex_color == HexColor::Yellow &&
+            game_state.phase == GamePhase::TwoTrains
+        {
+            info!("Green tiles are not available yet");
+            return;
+        }
+
         game_state.track_state.tile_choices = map_tile.tile_choices.clone();
         let num_choices = game_state.track_state.tile_choices.len();
         if num_choices != 0
@@ -1240,6 +1251,22 @@ pub fn set_tile_choices_for_hex( game_state: &mut GameState,
             // info!("loaded placement data for tile number {}", new_number);
             // tile_data.0 is a TilePlacementData, tile_data.1 is TileTrack
  
+            if tile_data.0.color == TileColor::Yellow &&
+                game_state.phase == GamePhase::TwoTrains
+            {
+                info!("Green tiles are not available yet");
+                return;
+            }
+
+            if tile_data.0.color == TileColor::Green &&
+                (game_state.phase == GamePhase::TwoTrains ||
+                 game_state.phase == GamePhase::ThreeTrains ||
+                 game_state.phase == GamePhase::FourTrains)
+            {
+                info!("Orange tiles are not available yet");
+                return;
+            }
+
             game_state.track_state.tile_choices =
                                         tile_data.0.upgrade_list.clone();
             let num_choices = game_state.track_state.tile_choices.len();
@@ -1266,6 +1293,10 @@ pub fn update_map_for_new_track( game_state: &mut GameState,
                     asset_server: &AssetServer,
 ) {
     let new_number = game_state.track_state.tile_chosen;
+    if new_number == 0
+    {
+        return;
+    }
     let rotation = game_state.track_state.tile_rotation;
 
     let Some(&placement_entity) =
@@ -1284,6 +1315,61 @@ pub fn update_map_for_new_track( game_state: &mut GameState,
             tile_data.0.facings.image_name(rotation));
 
         sprite.image = asset_server.load(image_path.clone());
+    }
+}
+
+// If we are clicking away to a new tile, we need to undo
+// the partial tile placement that was performed during
+// the abandoned tile construction.
+
+fn clear_previous_map_image(
+            game_state: &mut GameState,
+            mut maptile_query: &mut Query<(&MapTile, &mut Sprite, &Transform)>,
+            placement: &Query<(&TilePlacementData, &TileTrack)>,
+            asset_server: &AssetServer,
+) {
+    if game_state.track_state.hex_chosen == true
+    {
+        if let Some(hex_coord) = game_state.track_state.hex_coord
+        {
+            for (map_tile, mut sprite, _transform) in maptile_query.iter_mut()
+            {
+                if map_tile.coord == hex_coord
+                {
+                    // if this maptile had a placed_tile,
+                    // set the sprite to that image, rotation 0
+                    // else set the sprite to the original maptile image
+                    // from maptile.tile_name
+
+                    if map_tile.placed_tile != 0
+                    {
+                        if let Some(&placement_entity) =
+                            game_state.tile_placement_data_by_number.get(
+                                            & map_tile.placed_tile)
+                        {   
+                            if let Ok(tile_data) =
+                                    placement.get(placement_entity)
+                            {
+                                // tile_data.0 is a TilePlacementData,
+                                // tile_data.1 is TileTrack
+
+                                sprite.image = asset_server.load(
+                                    format!("{}/T{}_{}.png",
+                                            tile_data.0.color.name(),
+                                            map_tile.placed_tile,
+                                            tile_data.0.facings.image_name(
+                                                map_tile.placed_rotation)));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        sprite.image = asset_server.load(
+                                format!("Map/{}.png", map_tile.tile_name));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1326,6 +1412,9 @@ pub fn handle_tile_clicks(
 
             // info!("Is there a tile at {:?}", hex_coord);
             // Check if there's a tile at this coordinate
+
+            clear_previous_map_image(&mut game_state, &mut maptile_query,
+                                    &placement, &asset_server);
 
             for (tile, mut sprite, _transform) in maptile_query.iter_mut() {
                 if tile.coord == hex_coord {
