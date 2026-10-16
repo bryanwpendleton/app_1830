@@ -1424,6 +1424,50 @@ pub fn build_left_side_stock_ui( ui: &mut Ui,
     }
 }
 
+pub fn build_left_side_operating_ui( ui: &mut Ui,
+                                        game_state: & GameState)
+{
+    let Some(mut current_railroad) =
+        game_state.operating_state.order.get(game_state.operating_state.cur_rr)
+    else {
+        return;
+    };
+
+    let rr_idx = current_railroad.rr_idx;
+    let railroad = &game_state.railroads[rr_idx];
+    let rr_name = railroad.name.clone();
+
+    let current_money = railroad.assets.corporation_money;
+
+    ui.label(format!("{} is the current RR, with money {}",
+            rr_name,
+            current_money));
+    if let Some(grid_box) = game_state.market.get(
+                        &railroad.assets.share_value_token.grid_box)
+    {
+        ui.label(format!("The current share price is {}", grid_box.value));
+    }
+    else
+    {
+        ui.label("The current share price is unknown?");
+    }
+
+    for station in & railroad.assets.stations
+    {
+        ui.label(format!("There is a station at {}", station.location));
+    }
+    if railroad.assets.stations_remaining > 0
+    {
+        ui.label(format!("This railroad can place {} additional stations",
+                        railroad.assets.stations_remaining));
+    }
+
+    let mut trains : Vec<Train> = railroad.assets.trains.clone();
+
+    trains.sort_by(|a, b| { a.range().cmp(&b.range()) });
+    ui.label(format!("This railroad has {} trains {:?}", trains.len(), trains));
+
+}
 
 pub fn build_right_side_stock_ui(
             commands: &mut Commands,
@@ -1784,6 +1828,32 @@ pub fn buy_train(game_state: &mut GameState, train: Train)
     train.remove_from_bank(game_state);
 
     info!("{} bought {:?} for {}", rr_name, train, train.cost());
+
+    if game_state.phase == GamePhase::TwoTrains && train == Train::Three
+    {
+        let msg = game_state.advance_phase();
+        info!("{}", msg);
+    }
+    if game_state.phase == GamePhase::ThreeTrains && train == Train::Four
+    {
+        let msg = game_state.advance_phase();
+        info!("{}", msg);
+    }
+    if game_state.phase == GamePhase::FourTrains && train == Train::Five
+    {
+        let msg = game_state.advance_phase();
+        info!("{}", msg);
+    }
+    if game_state.phase == GamePhase::FiveTrains && train == Train::Six
+    {
+        let msg = game_state.advance_phase();
+        info!("{}", msg);
+    }
+    if game_state.phase == GamePhase::SixTrains && train == Train::Diesel
+    {
+        let msg = game_state.advance_phase();
+        info!("{}", msg);
+    }
 }
 
 // When this railroad finishes its operating turn, advance to the next
@@ -1842,13 +1912,16 @@ pub fn game_state_panel_left(
             {
                 build_left_side_privatecompany_ui( ui, players, &game_state);
             }
-            else
+            else if game_state.round_state == RoundState::StockRound
             {
-                // assume we're in a stock round for now.
                 build_left_side_stock_ui(
                         ui, players, & game_state);
             }
-
+            else
+            {
+                build_left_side_operating_ui(
+                        ui, & game_state);
+            }
         });
 
     Ok(())

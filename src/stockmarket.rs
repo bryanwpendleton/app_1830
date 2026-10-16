@@ -57,7 +57,7 @@ pub struct GridBox
     row: u32,
     column: u32,
     color: GridBoxColor,
-    value: u32,
+    pub value: u32,
     up: String,
     down: String,
     right: String,
