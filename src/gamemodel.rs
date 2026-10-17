@@ -562,6 +562,18 @@ pub enum RailroadOperation
     PurchaseTrain = 5,
 }
 
+// The BankPool supports the selling and trading of stock certificates
+// and unwanted trains. We track sold certificates and discarded trains
+// specially because their prices can fluctuate and are not the same
+// as the original par value and/or list price.
+//
+
+pub struct BankPool
+{
+    pub discarded_trains: Vec<Train>,
+    pub sold_certificates: Vec<Certificate>,
+}
+
 // ============================================================================
 // RESOURCES - Global game state
 // ============================================================================
@@ -570,7 +582,10 @@ pub enum RailroadOperation
 #[derive(Resource)]
 pub struct GameState {
     pub phase: GamePhase,
+
     pub bank: u32, // when the bank runs out of money, the game is over
+    pub pool: BankPool, // stock certificates (and trains) that are sold back
+
     pub num_players: u32, // 2-6
     pub certificate_limit: usize, // varies depending on num_players
     pub trains_left: [u32;6], // the bank may run out of trains
@@ -623,7 +638,13 @@ impl GameState {
     pub fn new() -> Self {
         GameState {
             phase: GamePhase::PurchasePrivateCompanies,
+
             bank: 12000 - 2400, // 2400 is the initial money for the players.
+            pool: BankPool {
+                discarded_trains: Vec::new(),
+                sold_certificates: Vec::new(),
+            },
+                
             num_players: 0,
             certificate_limit: 0,
             trains_left: [6,5,4,3,2,6], // to start: 6 2-trains,5 3-trains,etc

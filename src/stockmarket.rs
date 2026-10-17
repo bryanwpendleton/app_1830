@@ -81,6 +81,138 @@ pub struct ShareValueToken
     pub z_order: u32,
 }
 
+// The BankPool supports selling of stock certificates. It also manages
+// discarded trains.
+//
+// It is essential that unsold shares in the initial offering and shares
+// in the bank pool always be clearly distinguished. (Note there
+// are no shares in the bank pool when the game begins.)
+//
+// Shares sold back to the bank are placed in the bank pool. The
+// value of a share in the bank pool is determined by the position of
+// the corresponding share value token on the stock market.
+// Players may buy shares from the bank pool or the initial offering. 
+//
+// Any certificates you sell are placed in the bank pool and may
+// be bought by other players in their respective turns.
+// - Certificates may not be sold in the first stock round.
+// - When you sell more than one certificate of the same type
+//   stock, the share value does not drop until after you have sold
+//   all of the certificates. Thus, you receive the same amount of
+//   money for each certificate.
+// - When you sell certificates of more than one corporation in
+//   the same turn, you choose the order in which they are sold.
+// - If you sell certificates in a corporation, you may not later buy
+//   certificates in that corporation in the same stock round.
+// - You may not sell shares if the number of certificates to be
+//   sold, plus the number of certificates in the bank pool for that
+//   corporation, exceeds five.
+// - You may not sell the president’s certificate in a corporation.
+//   However, while selling your own shares, down to a point that
+//   another player’s share holdings in that company exceed your
+//   holdings in the corporation, you must give that company’s
+//   president’s certificate to the appropriate player and will
+//   receive 2 single certificates from that player in return.
+// - If your share holdings exceed the limits on certificate ownership,
+//   you must sell sufficient certificates to conform to the limits
+//   during your next turn in a stock round. See 4.3, pp. 12-13.
+// - Note that the owner of the CA private company receives
+//   a free share (10%) of the PRR. This share cannot be sold
+//   until the president’s certificate has been purchased, thereby
+//   setting the value of the PRR share. This is also true if the
+//   owner of the MH private company swaps for a NYC share
+//   before the NYC president’s certificate has been purchased.
+//
+// Par value is the cost of any further share purchases of
+// shares that are in the initial offering (not in the bank pool).
+//
+// Shares in the bank pool pay dividends to the corporate treasury.
+//
+// A president’s certificate can never end up in the bank pool.
+// The shares represented by the certificate can be sold to the bank
+// pool, but an exchange of the presidency must be made before
+// the shares appear in the pool. 
+//
+// By selling certificates, you can relinquish your position as
+// president in any situation where the necessary amount of shares
+// can be sold (i.e., no more than 50% of the total shares will
+// appear in the bank pool), and provided there is another stockholder
+// holding at least 20%.  In effect he announces the sale of his
+// stock, exchanges certificates with the new president, and then
+// places the ordinary certificates in the bank pool. Note that a
+// presidency cannot be transferred when there is no other stockholder
+// holding 20% or more. 
+//
+// Example: Gerald is holding two 10% certificates of the B&O valued
+// each at $100 and sells them both. He collects $200 from the bank
+// and places the certificates in the bank pool. The B&O share value
+// token on the stock market is moved downward two spaces to indicate
+// the new value of $82 per share for B&O stock.
+//
+// There may never be more than 5 certificates of any single corporation
+// in the bank pool. A playe rmay not sell shares if the number
+// of certificates to be sold plus the number of certificates
+// in the bank pool for that corporation exceeds 5. 
+//
+// During your turn in a stock round, you may purchase any number
+// of certificates from the bank pool of one corporation whose
+// share value token is in a brown grid box.  This purchase counts
+// as your one certificate purchase for the turn.
+//
+// -------------------------------------------------------------------
+//
+// BankPool (non-)behaviors involving PrivateCompanies
+//
+// The BO private company is closed down immediately when the
+// B&O railroad purchases its first train. The Mohawk & Hudson is
+// closed if traded for a 10% share of the New York Central railroad
+// as described on the left. All private companies are closed when
+// the first 5-train is bought. A private company may not be closed
+// voluntarily, nor may they be sold into the bank pool. Once
+// closed, a private company ceases to exist and takes no further
+// part in the game.
+//
+// A player owning the MH may exchange it for a 10% share of NYC,
+// provided he does not already hold 60% of the NYC shares and there
+// is at least one NYC share available in the bank or the pool.
+// The exchange may be made during the player’s turn of a stock round
+// or between the turns of other players or railroads in either stock
+// or operating rounds. This action closes the MH.
+//
+// -------------------------------------------------------------------
+//
+// BankPool behaviors in the handling of Railroad Trains:
+//
+// If a railroad with a legal train route has no train at the end of
+// its operating turn, it must immediately purchase a train.
+//
+// The railroad may purchase a train from the Bank Pool, the
+// bank, or another railroad using the normal rules. 
+// Available trains include trains in the bank, trains in the Bank Pool,
+// and trains offered for sale by other railroads.
+//
+// The bank pool may hold trains discarded by railroads (see
+// 6.6.1 below). These trains may be purchased for face value
+// (on the train card). The payment goes to the bank. 
+//
+// 6.6.1: If a railroad finds itself with an excess train,
+// the president must choose a train to discard. A discarded train
+// goes to the Bank Pool and its railroad receives no payment for it.
+// If multiple railroads must discard at the same time, the trains
+// are discarded in order of the companies’ share values—with the
+// highest valued railroad deciding first.
+//
+// phase 5 begins and the train limit drops to 2, and Bruce
+// must get rid of a train. He places the 3-train
+// in the bank pool. 
+//
+// A diesel train costs $1100. But, the price is only $800 if the
+// railroad trades-in a 4-, 5-, or 6- train. The exchanged train
+// (if not obsoleted by the exchange) is placed in the bank pool.
+// The trade-in is legal even if the railroad currently owns two trains.
+//
+
+
 // bit flags for the various choices a particular player might
 // have at this moment about what, if anything, they can buy
 // of a particular RailroadCorporation
