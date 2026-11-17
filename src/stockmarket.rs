@@ -5,6 +5,7 @@ use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
 use crate::gamemodel::Certificate;
+use crate::gamemodel::MarketState;
 use crate::gamemodel::OperatingRailroad;
 use crate::gamemodel::Player;
 use crate::gamemodel::RailroadCorporation;
@@ -212,16 +213,31 @@ pub struct ShareValueToken
 // The trade-in is legal even if the railroad currently owns two trains.
 //
 
+pub fn RemoveRailroadCertificate( certs: & mut Vec<Certificate>,
+                                    rr_idx: usize ) -> Certificate
+{
+    let result = Certificate::certificate(rr_idx);
+
+    // Find the index of the first matching object and remove it
+    if let Some(index) = certs.iter().position(|c| *c == result) {
+        certs.remove(index);
+    }
+    return result;
+}
 
 // bit flags for the various choices a particular player might
 // have at this moment about what, if anything, they can buy
-// of a particular RailroadCorporation
+// of a particular RailroadCorporation. There are a similar
+// set of data structures for tracking the various choices
+// a particular player might have about what, if anything,
+// they can sell.
 
 pub enum PurchaseOptions
 {
     None = 0,
     CanBuyPresCert = 1,
     CanBuyCert = 2,
+    CanBuyFromPool = 4,
 }
 impl PurchaseOptions
 {
@@ -232,6 +248,7 @@ impl PurchaseOptions
             PurchaseOptions::None => false,
             PurchaseOptions::CanBuyPresCert => true,
             PurchaseOptions::CanBuyCert => false,
+            PurchaseOptions::CanBuyFromPool => false,
         }
     }
     pub fn canBuyCert(&self) -> bool
@@ -241,6 +258,17 @@ impl PurchaseOptions
             PurchaseOptions::None => false,
             PurchaseOptions::CanBuyPresCert => false,
             PurchaseOptions::CanBuyCert => true,
+            PurchaseOptions::CanBuyFromPool => false,
+        }
+    }
+    pub fn canBuyFromPool(&self) -> bool
+    {
+        match self
+        {
+            PurchaseOptions::None => false,
+            PurchaseOptions::CanBuyPresCert => false,
+            PurchaseOptions::CanBuyCert => false,
+            PurchaseOptions::CanBuyFromPool => true,
         }
     }
 }
@@ -248,6 +276,7 @@ pub enum PurchaseDecision
 {
     BuyPresCert,
     BuyCert,
+    BuyCertFromPool,
 }
 
 pub fn railroad_purchase_options(
@@ -284,7 +313,45 @@ pub fn railroad_purchase_options(
     // - the player can buy a certificate at the current market
     //   value if there are certificates for this railroad in the
     //   bank pool.
+
+    if game_state.pool.has_certificates(railroad)
+    {
+        return PurchaseOptions::CanBuyFromPool;
+    }
+
     return PurchaseOptions::CanBuyCert; // XXX
+}
+
+pub enum SaleOptions
+{
+    None = 0,
+    CanSellToPool = 1,
+}
+impl SaleOptions
+{
+    pub fn canSellToPool(&self) -> bool
+    {
+        match self
+        {
+            SaleOptions::None => false,
+            SaleOptions::CanSellToPool => true,
+        }
+    }
+}
+pub enum SaleDecision
+{
+    SellToPool,
+}
+pub fn railroad_sale_options( game_state: & GameState,
+                                current_player: & Player,
+                                railroad: & RailroadCorporation)
+                    -> SaleOptions
+{
+    if current_player.assets.has_certificates(railroad)
+    {
+        return SaleOptions::CanSellToPool;
+    }
+    return SaleOptions::None;
 }
 
 // A railroad is floated if it has 4 or fewer certificates still unsold
@@ -392,6 +459,17 @@ pub fn place_share_value_token(game_state: & mut GameState,
                                         grid_box: start_pos.to_string(),
                                         z_order: z_order,
     };
+}
+
+impl MarketState
+{
+    pub fn current_price( game_state: & GameState,
+                            railroad: & RailroadCorporation) -> u32
+    {
+        let gb = &game_state.market[
+                    &railroad.assets.share_value_token.grid_box];
+        gb.value
+    }
 }
 
 // The current railroad has run its trains and earned some revenue, and
@@ -528,6 +606,53 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
                Certificate::certificate(rr_idx));
 
             game_state.market_state.current_player_has_bought_stock = true;
+        },
+        PurchaseDecision::BuyCertFromPool => {
+            // Update the player's assets:
+            // - personal_money is reduced by current market value
+            // - share of corporation is increased by 1
+            // Record that this player has bought during this turn, and
+            //   thus can now only sell or pass
+
+            let railroad = & game_state.railroads[rr_idx];
+            let price = MarketState::current_price(game_state, railroad);
+
+            current_player.assets.personal_money -= price;
+            game_state.bank += price;
+            current_player.assets.corporations[rr_idx] += 1;
+
+            current_player.assets.certificates.push(
+                RemoveRailroadCertificate(
+                        &mut game_state.pool.sold_certificates, rr_idx ) );
+
+            game_state.market_state.current_player_has_bought_stock = true;
+        },
+    }
+}
+
+pub fn sell_railroad_impl(commands: & Commands, game_state: & mut GameState,
+                                current_player: & mut Player,
+                                rr_idx: usize,
+                                price: u32,
+                                decision: SaleDecision)
+{
+    match decision
+    {
+        SaleDecision::SellToPool => {
+            // - Update the player's assets
+            // - personal_money is increased by sale price, bank decreased
+            // - certificate is moved to pool
+            // - Record that this player has sold during this turn
+
+            current_player.assets.personal_money += price;
+            game_state.bank -= price;
+            current_player.assets.corporations[rr_idx] -= 1;
+
+            game_state.pool.sold_certificates.push( 
+                RemoveRailroadCertificate(
+                        &mut current_player.assets.certificates, rr_idx ) );
+
+            game_state.market_state.current_player_has_sold_stock = true;
         },
     }
 }

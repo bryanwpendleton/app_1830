@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy_egui::EguiContexts;
 
 use crate::gamemodel::GameState;
 use crate::gamemodel::Certificate;
@@ -396,7 +395,7 @@ pub fn minimum_bid_for_pc(game_state: &GameState, pc: &PrivateCompany) -> u32
         }
         index = index + 1;
     }
-    (result + 5)
+    result + 5
 }
 // If the unsold private company with the lowest face value has at least
 // one bid on it, the buy-bid-turn sequence is paused. If only one

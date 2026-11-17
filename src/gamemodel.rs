@@ -12,7 +12,6 @@ use hexx::Hex;
 
 use crate::routemap::MapTile;
 use crate::routemap::City;
-use crate::routemap::HexName;
 use crate::routemap::TileInventoryQuantity;
 use crate::routemap::TilePlacementData;
 use crate::routemap::TileTrack;
@@ -21,13 +20,15 @@ use crate::routemap::TileHasJunction;
 use crate::routemap::update_map_for_new_track;
 use crate::routemap::run_trains;
 use crate::stockmarket::GridBox;
-use crate::stockmarket::StockMarketCell;
 use crate::stockmarket::ShareValueToken;
 use crate::stockmarket::check_if_floated;
 use crate::stockmarket::railroad_purchase_options;
+use crate::stockmarket::railroad_sale_options;
 use crate::stockmarket::stock_round_pass_impl;
 use crate::stockmarket::buy_railroad_impl;
+use crate::stockmarket::sell_railroad_impl;
 use crate::stockmarket::PurchaseDecision;
+use crate::stockmarket::SaleDecision;
 use crate::stockmarket::set_operating_order;
 use crate::stockmarket::place_station_marker;
 use crate::stockmarket::pay_dividend;
@@ -74,6 +75,21 @@ pub struct PlayerAssets {
     pub certificates: Vec<Certificate>,
     pub corporations: [u32;8], // Indexed by Corporation enum
     pub private_companies: [u32;6], // Indexed by PrivateCompany enum
+}
+impl PlayerAssets
+{
+    pub fn has_certificates(&self, railroad: & RailroadCorporation) -> bool
+    {
+        let presCert = Certificate::presidents_certificate(railroad.index());
+        let simpleCert = Certificate::certificate(railroad.index());
+
+        if let Some(index) = self.certificates.iter().position(
+                                |c| *c == presCert || *c == simpleCert )
+        {
+            return true;
+        }
+        return false;
+    }
 }
 
 /// Marks an entity as a player in the game
@@ -293,7 +309,7 @@ pub struct MarketState {
 pub struct OperatingRailroad
 {
     pub rr_idx: usize, // railroad's position in game_state.railroads
-    pub grid_position: GridBox,
+    pub grid_position: GridBox, // railroad's stock price at round start
     pub z_order: u32,
 }
 
@@ -334,6 +350,13 @@ pub enum Railroad {
     NewYorkNewHavenAndHartford = 6,
     BostonAndMaine = 7,
 }
+impl Railroad
+{
+    pub fn index(&self) -> usize
+    {
+        return *self as usize;
+    }
+}
 
 // Railroad Corporations have assets:
 // - station tokens, or station markers
@@ -351,6 +374,7 @@ pub struct RailroadAssets
 /// Marks an entity as a Railroad Corporation
 #[derive(Component)]
 pub struct RailroadCorporation {
+    pub railroad: Railroad,
     pub name: String,
     pub short_name: String,
     pub par_value: u32,
@@ -362,6 +386,13 @@ pub struct RailroadCorporation {
     pub assets: RailroadAssets,
 }
 
+impl RailroadCorporation
+{
+    pub fn index(&self) -> usize
+    {
+        return self.railroad.index();
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParValue {
     SixtySeven = 67,
@@ -574,6 +605,22 @@ pub struct BankPool
     pub sold_certificates: Vec<Certificate>,
 }
 
+impl BankPool
+{
+    pub fn has_certificates(&self, railroad: & RailroadCorporation) -> bool
+    {
+        let presCert = Certificate::presidents_certificate(railroad.index());
+        let simpleCert = Certificate::certificate(railroad.index());
+
+        if let Some(index) = self.sold_certificates.iter().position(
+                                |c| *c == presCert || *c == simpleCert )
+        {
+            return true;
+        }
+        return false;
+    }
+}
+
 // ============================================================================
 // RESOURCES - Global game state
 // ============================================================================
@@ -691,6 +738,7 @@ impl GameState {
             current_par_value: ParValue::SixtySeven,
             railroads: vec![
                 RailroadCorporation {
+                    railroad: Railroad::Pennsylvania,
                     name: "Pennsylvania".to_string(),
                     short_name: "PRR".to_string(),
                     par_value: 0,
@@ -712,6 +760,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::NewYorkCentral,
                     name: "New York Central".to_string(),
                     short_name: "NYC".to_string(),
                     par_value: 0,
@@ -733,6 +782,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::CanadianPacific,
                     name: "Canadian Pacific".to_string(),
                     short_name: "CPR".to_string(),
                     par_value: 0,
@@ -754,6 +804,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::BaltimoreAndOhio,
                     name: "Baltimore & Ohio".to_string(),
                     short_name: "B&O".to_string(),
                     par_value: 0,
@@ -775,6 +826,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::ChesapeakeAndOhio,
                     name: "Chesapeake & Ohio".to_string(),
                     short_name: "C&O".to_string(),
                     par_value: 0,
@@ -796,6 +848,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::Erie,
                     name: "Erie".to_string(),
                     short_name: "Erie".to_string(),
                     par_value: 0,
@@ -817,6 +870,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::NewYorkNewHavenAndHartford,
                     name: "New York, New Haven, & Hartford".to_string(),
                     short_name: "NNH".to_string(),
                     par_value: 0,
@@ -838,6 +892,7 @@ impl GameState {
                     },
                 },
                 RailroadCorporation {
+                    railroad: Railroad::BostonAndMaine,
                     name: "Boston & Maine".to_string(),
                     short_name: "B&M".to_string(),
                     par_value: 0,
@@ -1501,7 +1556,9 @@ pub fn build_right_side_stock_ui(
     // ... (lots of stuff)
 
     // During your turn in a stock round, you may buy an available
-    // certificate from either the initial offering or the bank pool. 
+    // certificate from either the initial offering or the bank pool. You
+    // may also sell certificates that you own, governed by various
+    // restrictions
 
     let Ok(mut current_player) = players.get_mut(game_state.current_player) else {
         return;
@@ -1531,6 +1588,8 @@ pub fn build_right_side_stock_ui(
                 ParValue::OneHundred, ParValue::OneHundred.name());
         });
 
+    // For each Railroad, you may be able to buy and/or sell their stock.
+
     let mut rr_idx : usize = 0;
     while rr_idx < NUM_RAILROADS
     {
@@ -1538,6 +1597,9 @@ pub fn build_right_side_stock_ui(
         let short_name = railroad.short_name.clone();
 
         let purchase_options = railroad_purchase_options(
+                game_state, &current_player, railroad);
+
+        let sale_options = railroad_sale_options(
                 game_state, &current_player, railroad);
 
         if purchase_options.canBuyPresCert()
@@ -1571,6 +1633,38 @@ pub fn build_right_side_stock_ui(
                         rr_idx,
                         PurchaseDecision::BuyCert);
                 check_if_floated(commands, game_state, players, rr_idx);
+                return;
+            }
+        }
+        if purchase_options.canBuyFromPool()
+        {
+            let price = MarketState::current_price(game_state, railroad);
+
+            if ui.button(format!("Buy {:?} from the pool for {}",
+                        short_name, price)).clicked()
+            {
+                buy_railroad_impl(commands, game_state,
+                        &mut current_player,
+                        rr_idx,
+                        PurchaseDecision::BuyCertFromPool);
+                return;
+            }
+        }
+        // FIXME: need to allow for selling multiple shares at once.
+        // Probably need something like a "number of shares to sell" component
+        // in this UI. Or maybe create a "buy order" or "shopping cart"?
+        if sale_options.canSellToPool()
+        {
+            let price = MarketState::current_price(game_state, railroad);
+
+            if ui.button(format!("Sell {:?} to the bank for {}",
+                        short_name, price)).clicked()
+            {
+                sell_railroad_impl(commands, game_state,
+                        &mut current_player,
+                        rr_idx,
+                        price,
+                        SaleDecision::SellToPool);
                 return;
             }
         }
