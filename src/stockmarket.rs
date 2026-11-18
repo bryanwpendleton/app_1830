@@ -314,7 +314,7 @@ pub fn railroad_purchase_options(
     //   value if there are certificates for this railroad in the
     //   bank pool.
 
-    if game_state.pool.has_certificates(railroad)
+    if game_state.pool.has_ordinary_certificates(railroad)
     {
         return PurchaseOptions::CanBuyFromPool;
     }
@@ -347,7 +347,8 @@ pub fn railroad_sale_options( game_state: & GameState,
                                 railroad: & RailroadCorporation)
                     -> SaleOptions
 {
-    if current_player.assets.has_certificates(railroad)
+    if current_player.assets.has_ordinary_certificates(railroad) &&
+        railroad.assets.share_value_token.grid_box.len() != 0
     {
         return SaleOptions::CanSellToPool;
     }
@@ -466,6 +467,12 @@ impl MarketState
     pub fn current_price( game_state: & GameState,
                             railroad: & RailroadCorporation) -> u32
     {
+        if railroad.assets.share_value_token.grid_box.len() == 0
+        {
+            info!("Somebody called current_price of a non-floated RR {}",
+                    railroad.name);
+            return 9999;
+        }
         let gb = &game_state.market[
                     &railroad.assets.share_value_token.grid_box];
         gb.value

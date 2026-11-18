@@ -81,10 +81,22 @@ impl PlayerAssets
     pub fn has_certificates(&self, railroad: & RailroadCorporation) -> bool
     {
         let presCert = Certificate::presidents_certificate(railroad.index());
-        let simpleCert = Certificate::certificate(railroad.index());
+        let ordinaryCert = Certificate::certificate(railroad.index());
 
         if let Some(index) = self.certificates.iter().position(
-                                |c| *c == presCert || *c == simpleCert )
+                                |c| *c == presCert || *c == ordinaryCert )
+        {
+            return true;
+        }
+        return false;
+    }
+    pub fn has_ordinary_certificates(&self,
+                                railroad: & RailroadCorporation) -> bool
+    {
+        let ordinaryCert = Certificate::certificate(railroad.index());
+
+        if let Some(index) = self.certificates.iter().position(
+                                        |c| *c == ordinaryCert )
         {
             return true;
         }
@@ -598,6 +610,13 @@ pub enum RailroadOperation
 // specially because their prices can fluctuate and are not the same
 // as the original par value and/or list price.
 //
+// You may not sell the president’s certificate in a corporation.
+// However, while selling your own shares, down to a point that
+// another player’s share holdings in that company exceed your
+// holdings in the corporation, you must give that company’s
+// president’s certificate to the appropriate player and will
+// receive 2 single certificates from that player in return.
+//
 
 pub struct BankPool
 {
@@ -607,13 +626,13 @@ pub struct BankPool
 
 impl BankPool
 {
-    pub fn has_certificates(&self, railroad: & RailroadCorporation) -> bool
+    pub fn has_ordinary_certificates(&self,
+                                railroad: & RailroadCorporation) -> bool
     {
-        let presCert = Certificate::presidents_certificate(railroad.index());
-        let simpleCert = Certificate::certificate(railroad.index());
+        let ordinaryCert = Certificate::certificate(railroad.index());
 
         if let Some(index) = self.sold_certificates.iter().position(
-                                |c| *c == presCert || *c == simpleCert )
+                                |c| *c == ordinaryCert )
         {
             return true;
         }
@@ -1498,6 +1517,17 @@ pub fn build_left_side_stock_ui( ui: &mut Ui,
     for c in current_player.assets.certificates.clone()
     {
         ui.label(format!("{:?}", c));
+    }
+
+    if game_state.pool.sold_certificates.len() > 0
+    {
+        ui.label(format!("The bank pool has {} certificates:",
+                            game_state.pool.sold_certificates.len() ));
+
+        for c in game_state.pool.sold_certificates.clone()
+        {
+            ui.label(format!("{:?}", c));
+        }
     }
 }
 
