@@ -80,11 +80,11 @@ impl PlayerAssets
 {
     pub fn has_certificates(&self, railroad: & RailroadCorporation) -> bool
     {
-        let presCert = Certificate::presidents_certificate(railroad.index());
-        let ordinaryCert = Certificate::certificate(railroad.index());
+        let pres_cert = Certificate::presidents_certificate(railroad.index());
+        let ordinary_cert = Certificate::certificate(railroad.index());
 
         if let Some(index) = self.certificates.iter().position(
-                                |c| *c == presCert || *c == ordinaryCert )
+                                |c| *c == pres_cert || *c == ordinary_cert )
         {
             return true;
         }
@@ -93,10 +93,10 @@ impl PlayerAssets
     pub fn has_ordinary_certificates(&self,
                                 railroad: & RailroadCorporation) -> bool
     {
-        let ordinaryCert = Certificate::certificate(railroad.index());
+        let ordinary_cert = Certificate::certificate(railroad.index());
 
         if let Some(index) = self.certificates.iter().position(
-                                        |c| *c == ordinaryCert )
+                                        |c| *c == ordinary_cert )
         {
             return true;
         }
@@ -432,7 +432,7 @@ impl ParValue
             ParValue::UnknownParValue => "??",
         }
     }
-    pub fn fromInteger(i: usize) -> ParValue
+    pub fn from_integer(i: usize) -> ParValue
     {
         match i
         {
@@ -465,7 +465,7 @@ pub enum PrivateCompany {
 }
 impl PrivateCompany
 {
-    pub fn fromInteger(i: usize) -> PrivateCompany
+    pub fn from_integer(i: usize) -> PrivateCompany
     {
         match i
         {
@@ -478,7 +478,7 @@ impl PrivateCompany
             _ => PrivateCompany::UnknownPrivateCompany,
         }
     }
-    pub fn faceValue(pc : PrivateCompany) -> u32
+    pub fn face_value(pc : PrivateCompany) -> u32
     {
         match pc
         {
@@ -629,10 +629,10 @@ impl BankPool
     pub fn has_ordinary_certificates(&self,
                                 railroad: & RailroadCorporation) -> bool
     {
-        let ordinaryCert = Certificate::certificate(railroad.index());
+        let ordinary_cert = Certificate::certificate(railroad.index());
 
         if let Some(index) = self.sold_certificates.iter().position(
-                                |c| *c == ordinaryCert )
+                                |c| *c == ordinary_cert )
         {
             return true;
         }
@@ -1419,8 +1419,8 @@ pub fn build_right_side_privatecompany_ui(
 
             while pc_idx < NUM_PRIVATE_COMPANIES
             {       
-                let pc = PrivateCompany::fromInteger(pc_idx);
-                let price = PrivateCompany::faceValue(pc);
+                let pc = PrivateCompany::from_integer(pc_idx);
+                let price = PrivateCompany::face_value(pc);
                 let min_bid = minimum_bid_for_pc(game_state, &pc);
 
                 if game_state.private_company_states[pc_idx] ==
@@ -1483,8 +1483,8 @@ pub fn build_left_side_privatecompany_ui( ui: &mut Ui,
     while pc_idx < NUM_PRIVATE_COMPANIES
     {
         ui.label(format!("{:?}: {}",
-                    PrivateCompany::fromInteger(pc_idx),
-                    PrivateCompanyState::formatState(
+                    PrivateCompany::from_integer(pc_idx),
+                    PrivateCompanyState::format_state(
                             game_state.private_company_states[pc_idx])));
         pc_idx += 1;
     }
@@ -1632,7 +1632,7 @@ pub fn build_right_side_stock_ui(
         let sale_options = railroad_sale_options(
                 game_state, &current_player, railroad);
 
-        if purchase_options.canBuyPresCert()
+        if purchase_options.can_buy_pres_cert()
         {
             let price = 2 * game_state.current_par_value as u32;
 
@@ -1646,11 +1646,11 @@ pub fn build_right_side_stock_ui(
                 return;
             }
         }
-        if purchase_options.canBuyCert()
+        if purchase_options.can_buy_cert()
         {
 /*
             game_state.current_par_value =
-                        ParValue::fromInteger(railroad.par_value as usize);
+                        ParValue::from_integer(railroad.par_value as usize);
             let price = game_state.current_par_value as u32;
 */
             let price = railroad.par_value as u32;
@@ -1666,7 +1666,7 @@ pub fn build_right_side_stock_ui(
                 return;
             }
         }
-        if purchase_options.canBuyFromPool()
+        if purchase_options.can_buy_from_pool()
         {
             let price = MarketState::current_price(game_state, railroad);
 
@@ -1683,7 +1683,7 @@ pub fn build_right_side_stock_ui(
         // FIXME: need to allow for selling multiple shares at once.
         // Probably need something like a "number of shares to sell" component
         // in this UI. Or maybe create a "buy order" or "shopping cart"?
-        if sale_options.canSellToPool()
+        if sale_options.can_sell_to_pool()
         {
             let price = MarketState::current_price(game_state, railroad);
 

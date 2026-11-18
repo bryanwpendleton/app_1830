@@ -213,7 +213,7 @@ pub struct ShareValueToken
 // The trade-in is legal even if the railroad currently owns two trains.
 //
 
-pub fn RemoveRailroadCertificate( certs: & mut Vec<Certificate>,
+pub fn remove_railroad_certificate( certs: & mut Vec<Certificate>,
                                     rr_idx: usize ) -> Certificate
 {
     let result = Certificate::certificate(rr_idx);
@@ -241,7 +241,7 @@ pub enum PurchaseOptions
 }
 impl PurchaseOptions
 {
-    pub fn canBuyPresCert(&self) -> bool
+    pub fn can_buy_pres_cert(&self) -> bool
     {
         match self
         {
@@ -251,7 +251,7 @@ impl PurchaseOptions
             PurchaseOptions::CanBuyFromPool => false,
         }
     }
-    pub fn canBuyCert(&self) -> bool
+    pub fn can_buy_cert(&self) -> bool
     {
         match self
         {
@@ -261,7 +261,7 @@ impl PurchaseOptions
             PurchaseOptions::CanBuyFromPool => false,
         }
     }
-    pub fn canBuyFromPool(&self) -> bool
+    pub fn can_buy_from_pool(&self) -> bool
     {
         match self
         {
@@ -329,7 +329,7 @@ pub enum SaleOptions
 }
 impl SaleOptions
 {
-    pub fn canSellToPool(&self) -> bool
+    pub fn can_sell_to_pool(&self) -> bool
     {
         match self
         {
@@ -629,7 +629,7 @@ pub fn buy_railroad_impl(commands: & Commands, game_state: & mut GameState,
             current_player.assets.corporations[rr_idx] += 1;
 
             current_player.assets.certificates.push(
-                RemoveRailroadCertificate(
+                remove_railroad_certificate(
                         &mut game_state.pool.sold_certificates, rr_idx ) );
 
             game_state.market_state.current_player_has_bought_stock = true;
@@ -656,7 +656,7 @@ pub fn sell_railroad_impl(commands: & Commands, game_state: & mut GameState,
             current_player.assets.corporations[rr_idx] -= 1;
 
             game_state.pool.sold_certificates.push( 
-                RemoveRailroadCertificate(
+                remove_railroad_certificate(
                         &mut current_player.assets.certificates, rr_idx ) );
 
             game_state.market_state.current_player_has_sold_stock = true;

@@ -33,7 +33,7 @@ pub enum PrivateCompanyState
 
 impl PrivateCompanyState
 {
-    pub fn formatState(encoded_state: u32 ) -> String
+    pub fn format_state(encoded_state: u32 ) -> String
     {
         if encoded_state == PrivateCompanyState::Unsold as u32
         {
@@ -250,7 +250,7 @@ pub fn lowest_unsold_pc( game_state: &mut GameState ) -> PrivateCompany
         if game_state.private_company_states[pc_idx] ==
             PrivateCompanyState::Unsold as u32
         {
-            return PrivateCompany::fromInteger(pc_idx);
+            return PrivateCompany::from_integer(pc_idx);
         }
         pc_idx += 1;
     }
@@ -383,7 +383,7 @@ pub fn highest_bid_for_pc(game_state: &GameState, pc: &PrivateCompany)
 
 pub fn minimum_bid_for_pc(game_state: &GameState, pc: &PrivateCompany) -> u32
 {
-    let mut result: u32 = PrivateCompany::faceValue(*pc);
+    let mut result: u32 = PrivateCompany::face_value(*pc);
 
     let mut index : usize = 0;
     while index < game_state.auction_bids.len()

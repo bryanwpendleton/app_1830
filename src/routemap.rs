@@ -2310,15 +2310,15 @@ pub fn do_simple_routefinding_tests(
     asset_server: Res<AssetServer>,
 ) {
     // On an empty map, there should be no path from A9 to B10.
-    let A9 = Hex::new(1, -5);
-    let B10 = Hex::new(1, -4);
-    let C15 = Hex::new(3, -3);
-    let D10 = Hex::new(0, -2);
-    let D14 = Hex::new(2, -2);
-    let E9 = Hex::new(1, -1);
-    let E11 = Hex::new(0, -1);
+    let a9 = Hex::new(1, -5);
+    let b10 = Hex::new(1, -4);
+    let c15 = Hex::new(3, -3);
+    let d10 = Hex::new(0, -2);
+    let d14 = Hex::new(2, -2);
+    let e9 = Hex::new(1, -1);
+    let e11 = Hex::new(0, -1);
 
-    let path = find_path( &mut game_state, &mut hexes, &A9, &B10);
+    let path = find_path( &mut game_state, &mut hexes, &a9, &b10);
 
     info!("Empty map path from A9 to B10 is: {:?}", path);
 
@@ -2334,11 +2334,11 @@ pub fn do_simple_routefinding_tests(
         &placement, &asset_server,
     );
 
-    let path_with_tile = find_path( &mut game_state, &mut hexes, &A9, &B10);
+    let path_with_tile = find_path( &mut game_state, &mut hexes, &a9, &b10);
 
     info!("With tile on B10, path from A9 to B10 is: {:?}", path_with_tile);
 
-    let incomplete_path = find_path( &mut game_state, &mut hexes, &A9, &D14);
+    let incomplete_path = find_path( &mut game_state, &mut hexes, &a9, &d14);
 
     info!("Can we get from A9 to D14 (no): {:?}", incomplete_path);
 
@@ -2394,30 +2394,30 @@ pub fn do_simple_routefinding_tests(
     // should see the same paths in either direction.
 
     info!("Path from A9 to B10: {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &B10));
+            find_path( &mut game_state, &mut hexes, &a9, &b10));
     info!("Path from A9 to D10: {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &D10));
+            find_path( &mut game_state, &mut hexes, &a9, &d10));
     info!("Path from A9 to D14: {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &D14));
+            find_path( &mut game_state, &mut hexes, &a9, &d14));
     info!("Path from A9 to E9: {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &E9));
+            find_path( &mut game_state, &mut hexes, &a9, &e9));
 
     info!("Path from A9 to E11 (expect None): {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &E11));
+            find_path( &mut game_state, &mut hexes, &a9, &e11));
     info!("Path from A9 to C15 (expect None): {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &C15));
+            find_path( &mut game_state, &mut hexes, &a9, &c15));
 
     info!("Path from D14 to D10: {:?}",
-            find_path( &mut game_state, &mut hexes, &D14, &D10));
+            find_path( &mut game_state, &mut hexes, &d14, &d10));
     info!("Path from D14 to B10: {:?}",
-            find_path( &mut game_state, &mut hexes, &D14, &B10));
+            find_path( &mut game_state, &mut hexes, &d14, &b10));
     info!("Path from D14 to E9: {:?}",
-            find_path( &mut game_state, &mut hexes, &D14, &E9));
+            find_path( &mut game_state, &mut hexes, &d14, &e9));
     info!("Path from D14 to A9: {:?}",
-            find_path( &mut game_state, &mut hexes, &D14, &A9));
+            find_path( &mut game_state, &mut hexes, &d14, &a9));
 
     info!("Path from D14 to E11 (expect None): {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &E11));
+            find_path( &mut game_state, &mut hexes, &a9, &e11));
     info!("Path from D14 to C15 (expect None): {:?}",
-            find_path( &mut game_state, &mut hexes, &A9, &C15));
+            find_path( &mut game_state, &mut hexes, &a9, &c15));
 }
