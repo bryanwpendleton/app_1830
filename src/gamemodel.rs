@@ -1311,6 +1311,21 @@ pub fn place_tile_impl(
     };
 }
 
+/// Scales every text style in this panel's `Ui` by [`PANEL_FONT_SCALE`].
+///
+/// The `Ui` starts from the context style each frame, so the scaling does not
+/// compound, and other egui windows are unaffected. Currently, to change
+/// the value, we have to edit this file. Claude suggested a range of values
+/// from 1.1 to 1.3 and picked 1.2
+
+const PANEL_FONT_SCALE: f32 = 1.2;
+
+fn enlarge_panel_fonts(ui: &mut Ui) {
+    for font_id in ui.style_mut().text_styles.values_mut() {
+        font_id.size *= PANEL_FONT_SCALE;
+    }
+}
+
 /// Renders the game info panel bound to [`GameState`].
 ///
 /// Runs in the [`EguiPrimaryContextPass`] schedule and draws a right-hand
@@ -1329,6 +1344,15 @@ pub fn game_state_panel_right(
     let ctx = contexts.ctx_mut()?.clone();
 
 /*
+Claude had this to say about this code:
+
+  Why not the commented-out override_font_id blocks: those force every piece
+  of text to one size, so headings like "1830" would end up the same size as
+  body text. They also change the style for the whole egui context, not just
+  these panels. Scaling the text styles keeps headings larger than body text
+  and only affects the two panels. The scaling doesn't build up from frame to
+  frame, because each frame's Ui starts again from the normal context style.
+
     ctx.style_mut(|style| {
         style.override_font_id = Some(egui::FontId::proportional(16.0));
     });
@@ -1347,6 +1371,7 @@ pub fn game_state_panel_right(
         .resizable(false)
         .default_size(220.0)
         .show(&mut viewport_ui, |ui| {
+            enlarge_panel_fonts(ui);
             ui.heading("1830");
             ui.separator();
 
@@ -2047,6 +2072,7 @@ pub fn game_state_panel_left(
         .resizable(false)
         .default_size(220.0)
         .show(&mut viewport_ui, |ui| {
+            enlarge_panel_fonts(ui);
             ui.heading("1830");
             ui.separator();
 
