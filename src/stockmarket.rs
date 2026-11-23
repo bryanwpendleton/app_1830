@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use bevy::prelude::*;
-use bevy_egui::EguiContexts;
+use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
 
 use crate::gamemodel::GameState;
 use crate::gamemodel::Certificate;
@@ -12,6 +12,7 @@ use crate::gamemodel::RailroadCorporation;
 use crate::gamemodel::RoundState;
 use crate::gamemodel::NUM_RAILROADS;
 use crate::gamemodel::Station;
+use crate::gamemodel::president_of;
 
 /// The stock market records and governs the value of the railroad
 /// corporations’ shares. This stock market is represented by a
@@ -2388,3 +2389,138 @@ pub fn initialize_stock_market(
     info!("Stock Grid initialized");
 }
 
+
+// ============================================================================
+// STOCK MARKET WINDOW - read-only egui view of the stock market
+// ============================================================================
+
+/// Native pixel size of `assets/StockMarket/sm-1830-pbm.jpg`.
+const SM_IMAGE_SIZE: egui::Vec2 = egui::Vec2::new(747.0, 259.0);
+
+/// The image is small, so it is drawn enlarged by this factor.
+const SM_IMAGE_SCALE: f32 = 1.6;
+
+/// The light-yellow blank area at the bottom right of the image, in native
+/// (unscaled) image pixels. The railroad table is drawn inside it.
+/// To adjust the table location, change the first Pos2 in SM_TABLE_AREA.
+/// Larger x moves it right, and smaller y moves it up. If it gets too
+/// close to the right edge, the columns will run out of room.
+///
+const SM_TABLE_AREA: egui::Rect = egui::Rect::from_min_max(
+    egui::Pos2::new(395.0, 118.0),
+    egui::Pos2::new(745.0, 257.0),
+);
+
+/// Whether the StockMarket window is currently open, plus the handle of its
+/// background image (loaded the first time the window is shown).
+#[derive(Resource, Default)]
+pub struct StockMarketWindow {
+    pub open: bool,
+    background: Option<Handle<Image>>,
+}
+
+/// Draws the StockMarket window while [`StockMarketWindow::open`] is set.
+///
+/// The window is read-only: the user can only close it, via its title bar.
+pub fn stock_market_window(
+    mut contexts: EguiContexts,
+    mut sm_window: ResMut<StockMarketWindow>,
+    game_state: Res<GameState>,
+    mut players: Query<& mut Player>,
+    asset_server: Res<AssetServer>,
+) -> Result {
+    if !sm_window.open {
+        return Ok(());
+    }
+
+    let handle = sm_window.background
+        .get_or_insert_with(||
+            asset_server.load("StockMarket/sm-1830-pbm.jpg"))
+        .clone();
+    let texture_id = contexts.add_image(EguiTextureHandle::Strong(handle));
+    let ctx = contexts.ctx_mut()?.clone();
+
+    let image_size = SM_IMAGE_SIZE * SM_IMAGE_SCALE;
+    let mut open = sm_window.open;
+
+    egui::Window::new("StockMarket")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(&ctx, |ui| {
+            let image = ui.add(egui::Image::new(
+                egui::load::SizedTexture::new(texture_id, image_size)));
+
+            // Map the blank area from image pixels to screen coordinates.
+            let origin = image.rect.min;
+            let table_rect = egui::Rect::from_min_max(
+                origin + SM_TABLE_AREA.min.to_vec2() * SM_IMAGE_SCALE,
+                origin + SM_TABLE_AREA.max.to_vec2() * SM_IMAGE_SCALE,
+            );
+
+            ui.scope_builder(egui::UiBuilder::new().max_rect(table_rect), |ui| {
+                // The background is light yellow regardless of egui theme.
+                ui.visuals_mut().override_text_color =
+                    Some(egui::Color32::BLACK);
+                ui.spacing_mut().item_spacing.y = 1.0;
+                build_railroad_table(ui, &mut players, &game_state);
+            });
+        });
+
+    sm_window.open = open;
+    Ok(())
+}
+
+/// One row per [`Railroad`]; only Name is filled in so far.
+fn build_railroad_table(ui: &mut egui::Ui,
+                        players: &mut Query<& mut Player>,
+                        game_state: &GameState)
+{
+    const COLUMNS: [&str; 7] = ["Name", "Pres", "Par",
+                                "Unsold", "Pool", "Money", "Market Price"];
+
+    egui::Grid::new("stock_market_railroad_table")
+        .spacing([12.0, 1.0])
+        .show(ui, |ui| {
+            for column in COLUMNS {
+                // `strong` text ignores override_text_color, so set it here.
+                ui.label(egui::RichText::new(column).strong()
+                    .color(egui::Color32::BLACK));
+            }
+            ui.end_row();
+
+            for railroad in game_state.railroads.iter().take(NUM_RAILROADS) {
+                let rr_idx = railroad.railroad.index();
+
+                ui.label(&railroad.short_name);
+                if railroad.floated
+                {
+                    let mut current_pres = "--".to_string();
+                    let current_player_idx =
+                                president_of(game_state, players, rr_idx);
+                    let current_player_ety =
+                            game_state.player_by_player_id[current_player_idx];
+                    if let Ok(current_player) =
+                                    players.get(current_player_ety) {
+                        current_pres = current_player.name.clone();
+                    };      
+                    ui.label(current_pres);
+                    ui.label(format!("{}", railroad.par_value));
+                    ui.label(format!("{}", railroad.certificates_remaining));
+                    ui.label(format!("{}",
+                                game_state.pool
+                                        .num_ordinary_certificates(railroad)));
+                    ui.label(format!("{}", railroad.assets.corporation_money));
+                    ui.label(format!("{}",
+                        MarketState::current_price(game_state, railroad)));
+                }
+                else
+                {
+                    for _ in 1..COLUMNS.len() {
+                        ui.label("--");
+                    }
+                }
+                ui.end_row();
+            }
+        });
+}

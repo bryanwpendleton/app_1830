@@ -11,6 +11,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use hexx::Hex;
 
 use crate::routemap::MapTile;
+use crate::stockmarket::{StockMarketWindow, stock_market_window};
 use crate::routemap::City;
 use crate::routemap::TileInventoryQuantity;
 use crate::routemap::TilePlacementData;
@@ -638,6 +639,16 @@ impl BankPool
         }
         return false;
     }
+    pub fn num_ordinary_certificates(&self,
+                                railroad: & RailroadCorporation) -> u32
+    {
+        let ordinary_cert = Certificate::certificate(railroad.index());
+
+        self.sold_certificates.iter()
+            .filter(|&c| *c == ordinary_cert )
+            .count()
+            as u32
+    }
 }
 
 // ============================================================================
@@ -1068,8 +1079,12 @@ pub enum RoundSet {
 /// come online.
 pub fn start_stock_round(mut game_state: ResMut<GameState>,
                     priority_deal: Query<Entity, With<PriorityDealCard>>,
+                    mut sm_window: ResMut<StockMarketWindow>,
 ) {
     info!("=== Stock Round starting ===");
+
+    // Control is passing to another player.
+    sm_window.open = false;
 
     game_state.market_state.passes = 0;
     game_state.market_state.last_buy_sell = 0;
@@ -1085,8 +1100,12 @@ pub fn start_stock_round(mut game_state: ResMut<GameState>,
 /// Runs once each time an Operating Round begins (on entering
 /// [`RoundState::OperatingRound`]).
 pub fn start_operating_round(mut game_state: ResMut<GameState>,
-    mut players: Query<&mut Player>, )
+    mut players: Query<&mut Player>,
+    mut sm_window: ResMut<StockMarketWindow>, )
 {
+    // Control is passing to another player.
+    sm_window.open = false;
+
     pay_privco_revenue(& mut game_state, & mut players);
 
     set_operating_order(& mut game_state, & mut players);
@@ -2050,6 +2069,7 @@ pub fn game_state_panel_left(
     mut contexts: EguiContexts,
     players: Query<&Player>,
     mut game_state: ResMut<GameState>,
+    mut sm_window: ResMut<StockMarketWindow>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
 
@@ -2078,6 +2098,10 @@ pub fn game_state_panel_left(
 
             ui.label(format!("Phase: {}", game_state.phase_label()));
             ui.label(format!("Bank: ${}", game_state.bank));
+            if ui.button("View StockMarket").clicked()
+            {
+                sm_window.open = true;
+            }
             ui.separator();
 
             if game_state.phase == GamePhase::PurchasePrivateCompanies
@@ -2170,6 +2194,7 @@ impl Plugin for Game1830Plugin {
     fn build(&self, app: &mut App) {
         app
             .insert_resource(GameState::new())
+            .init_resource::<StockMarketWindow>()
 
             .init_state::<RoundState>()
 
@@ -2198,7 +2223,8 @@ impl Plugin for Game1830Plugin {
             // egui UI systems must run in the EguiPrimaryContextPass schedule
             // so the primary context is available.
             .add_systems(EguiPrimaryContextPass, 
-                (game_state_panel_left, game_state_panel_right) );
+                (game_state_panel_left, game_state_panel_right,
+                 stock_market_window) );
 
         // Update systems run every frame
         // TODO: Add update systems when needed
